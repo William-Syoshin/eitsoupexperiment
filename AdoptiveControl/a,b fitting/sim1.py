@@ -1,68 +1,85 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import curve_fit
 
 # ==========================================
-# 1. 実験データの入力（ここにエクセルの値を直接書く）
+# 1. データの入力とフィッティング (a と B を求める)
 # ==========================================
-# 塩の量 (g)
-S_data = np.array([0, 1, 2, 3, 4, 5, 6])
+# 画像から読み取った実測値 (50℃)
+x_data = np.array([0, 1, 2, 3, 4, 5, 6])
+y_data = np.array([0.259, 3.18, 5.34, 7.39, 9.43, 11.6, 13.9])
 
-# 水だけの伝導率 (ms/cm) 
-# ※以下の数字を、エクセルの青線の正確な値に書き換えてください！
-sigma_data = np.array([0.259, 3.64, 5.34, 7.39, 9.43, 11.6, 13.9]) 
+# 最小二乗法で50℃の傾きと切片を出す
+a_50, b_50 = np.polyfit(x_data, y_data, 1)
 
-# データ測定時の温度（50度）
-T_exp = 50.0
+# 25℃基準の係数に変換 (1.5で割る)
+a_fit = a_50 / 1.5
+b_fit = b_50 / 1.5
 
-# ==========================================
-# 2. モデル式の定義
-# ==========================================
-# σ = (aS + B) * (1 + 0.02(T - 25))
-def conductivity_model(S, a, B):
-    # 温度補正係数 (50度なら 1 + 0.02*25 = 1.5)
-    temp_correction = 1.0 + 0.02 * (T_exp - 25.0) 
-    return (a * S + B) * temp_correction
+print(f"決定した係数: a={a_fit:.4f}, b={b_fit:.4f}")
 
 # ==========================================
-# 3. フィッティングの実行
+# 2. シミュレーションの設定
 # ==========================================
-# curve_fitが、データに最も合う a と B を自動計算してくれます
-popt, pcov = curve_fit(conductivity_model, S_data, sigma_data)
-a_fit = popt[0]
-B_fit = popt[1]
+Qin = 0.2932; k_env = 0.0096; k_loss = 0.0017; k_absorb = 0.0102
+T_room = 25.5; target_S = 6.0; total_weight = 600.0
+target_C = (a_fit * target_S + b_fit) * (1.0 + 0.02 * (50.7 - 25.5))
 
-#★追加：R^2 (決定係数) の計算
-# ① まず、求まった a, B を使って「理論上の伝導率」を計算する
-sigma_pred = conductivity_model(S_data, a_fit, B_fit)
+dt = 1.0; steps = 400; times = np.arange(steps)
+S_added = np.zeros(steps); S_liquid = np.zeros(steps)
+Tw_arr = np.zeros(steps); C_arr = np.zeros(steps)
 
-# ② 実際のデータとのズレ（残差平方和）と、データ全体のばらつき（全平方和）から R^2 を出す
-ss_res = np.sum((sigma_data - sigma_pred) ** 2)
-ss_tot = np.sum((sigma_data - np.mean(sigma_data)) ** 2)
-r_squared = 1 - (ss_res / ss_tot)
-print("========================================")
-print(f"求まったパラメータ:")
-print(f"a (傾き) = {a_fit:.4f}")
-print(f"B (切片) = {B_fit:.4f}")
-print("========================================")
+# 実測温度
+t_real = np.array([0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300])
+T_real = np.array([25.5, 30.0, 38.0, 44.0, 47.1, 49.0, 50.7, 50.0, 49.9, 49.6, 49.0])
 
 # ==========================================
-# 4. グラフで確認（ズレがないか視覚的にチェック）
+# 3. メインループ (30秒ごとのPID)
 # ==========================================
-# 綺麗な線を引くための計算
-S_line = np.linspace(0, 6, 100)
-sigma_line = conductivity_model(S_line, a_fit, B_fit)
+Tw = 25.5; Tp = 25.5; S_total = 0.0; S_liq = 0.0; err_sum = 0.0
 
-plt.figure(figsize=(8, 6))
-# 実際のデータを点でプロット
-plt.scatter(S_data, sigma_data, color='blue', s=50, label='Excel Data (Water)')
+for i in range(steps):
+    # 外乱：ポテトの吸塩 (150秒〜)
+    if 150 < i < 350: S_liq -= 0.005 
+    
+    # 温度と伝導率の計算
+    Tw_arr[i] = Tw
+    C = (a_fit * S_liq + b_fit) * (1.0 + 0.02 * (Tw - 25.5))
+    C_arr[i] = C
+    S_added[i] = S_total
+    S_liquid[i] = S_liq
 
-# ★追加：グラフの凡例（ラベル）にも R^2 を表示するようにしました
-plt.plot(S_line, sigma_line, color='red', 
-         label=f'Fitted Model: a={a_fit:.3f}, B={B_fit:.3f}\n$R^2$={r_squared:.4f}')
-plt.title('Conductivity Fitting: $\sigma = (aS + B)(1 + 0.02(T - 25))$')
-plt.xlabel('Salt (g)')
-plt.ylabel('Conductivity (ms/cm)')
-plt.legend()
-plt.grid(True)
-plt.show()
+    # 30秒ごとのPID
+    if i % 30 == 0:
+        err = target_C - C
+        err_sum += err * 30
+        u = 0.6 * err + 0.02 * err_sum
+        u = np.clip(u, 0, 0.5) # 0.5g制限
+        S_total += u; S_liq += u
+
+    # 物理更新
+    Tw += (Qin - k_env*(Tw-T_room) - k_loss*(Tw-Tp)) * dt
+    Tp += (k_absorb*(Tw-Tp)) * dt
+
+# ==========================================
+# 4. 2x2 グラフ表示
+# ==========================================
+fig, ax = plt.subplots(2, 2, figsize=(12, 8))
+
+# 投入量
+ax[0,0].step(times, S_added, 'r'); ax[0,0].set_title("1. Total Salt Added (g)")
+ax[0,0].axhline(6, color='k', ls=':'); ax[0,0].grid(True)
+
+# 濃度 (%)
+ax[0,1].plot(times, (S_liquid/total_weight)*100, 'r')
+ax[0,1].axhline(1.0, color='k', ls='-'); ax[0,1].set_title("2. Salinity (%)")
+ax[0,1].grid(True); ax[0,1].set_ylim(0, 1.2)
+
+# 伝導率
+ax[1,0].plot(times, C_arr, 'r'); ax[1,0].set_title("3. Conductivity (mS/cm)")
+ax[1,0].axhline(target_C, color='k', ls=':'); ax[1,0].grid(True)
+
+# 温度
+ax[1,1].plot(t_real, T_real, 'ko'); ax[1,1].plot(times, Tw_arr, 'r')
+ax[1,1].set_title("4. Temperature (C)"); ax[1,1].grid(True)
+
+plt.tight_layout(); plt.show()
