@@ -8,29 +8,30 @@ from Controls.OpenLoop import OpenLoopController
 
 def run_simulation(
     control_mode="PID",
-    control_interval=30.0,
-    salt_limit=1.0,        # 一回に入れられる最大量 [g]
-    kp=0.1, ki=0.005, kd=0.0
+    salt_interval=30.0,    # 塩分の制御間隔 [秒]
+    salt_limit=1.0,        # 1回に入れられる塩の最大量 [g]
+    temp_interval=10.0,     # 【新機能】温度の制御間隔 [秒]
+    kp_c=0.1, ki_c=0.005, kd_c=0.0,    # 濃度用PIDゲイン
+    kp_t=0.05, ki_t=0.0005, kd_t=2.0   # 温度用PIDゲイン
 ):
     # ── 基本設定 ──
-    DT       = 1.0    # 物理計算の刻み
+    DT       = 1.0    # 物理計算の刻み（シミュレーション自体は1秒固定）
     SIM_TIME = 600.0  # 全体10分間
     STEPS    = int(SIM_TIME / DT)
     time     = np.arange(STEPS) * DT
     T_REF    = 50.0   # 目標温度
     C_REF    = 1.0    # 目標濃度
 
-    # プラント生成 (物理定数は soup_plant.py に準拠)
-    # alpha=8.836, beta=0.499, k_loss=0.0017
+    # プラント生成
     plant = SoupPlant(water_mass=500, potato_mass=100, T_w_init=20.0, T_p_init=20.0)
     
-    # 投入レートの上限を計算
-    rate_limit = salt_limit / control_interval
+    # 投入レートの上限を計算 (g/s)
+    rate_limit = salt_limit / salt_interval
 
-    # 濃度PID（output_maxを設定）
+    # 濃度PID
     if control_mode == "PID":
         conc_controller = PIDController(
-            Kp=kp, Ki=ki, Kd=kd, 
+            Kp=kp_c, Ki=ki_c, Kd=kd_c, 
             output_min=0.0, 
             output_max=rate_limit
         )
@@ -38,9 +39,9 @@ def run_simulation(
         conc_controller = OpenLoopController(fixed_rate=0.0)
 
     # 温度PID
-    pid_temp = PIDController(Kp=0.05, Ki=0.0005, Kd=2.0, output_min=0.0)
+    pid_temp = PIDController(Kp=kp_t, Ki=ki_t, Kd=kd_t, output_min=0.0)
 
-    # 記録用
+    # 記録用（Q_in は前の状態を保持するためにループ外で初期化）
     Q_in = 0.0; salt_added = 0.0
     logs = {
         "Tw": np.zeros(STEPS), "C": np.zeros(STEPS), "sigma": np.zeros(STEPS), 
@@ -48,24 +49,33 @@ def run_simulation(
     }
 
     for i in range(STEPS):
-        if i % control_interval == 0:
-            # 1. 温度更新
+        # ========================================================
+        # 1. 温度制御（temp_interval 秒ごとに実行）
+        # ========================================================
+        if i % temp_interval == 0:
             e_T = T_REF - plant.T_w
-            Q_in = max(0.0, pid_temp.compute(e_T, control_interval))
+            # PID計算に渡す時間も temp_interval に合わせる
+            Q_in = max(0.0, pid_temp.compute(e_T, temp_interval))
+        # （制御タイミングではない時は、前回計算した Q_in の熱量をそのまま維持する）
 
-            # 2. 濃度更新
+        # ========================================================
+        # 2. 濃度制御（salt_interval 秒ごとに実行）
+        # ========================================================
+        if i % salt_interval == 0:
             if control_mode == "OpenLoop":
-                salt_added = 6.0 if i == 0 else 0.0 # 初期投入6g
+                salt_added = 6.0 if i == 0 else 0.0
             elif control_mode == "PID":
                 C_hat = plant.estimated_concentration
                 e_C = C_REF - C_hat
-                # コントローラ内部で上限が適用される
-                salt_added = conc_controller.compute(e_C, control_interval) * control_interval
+                salt_added = conc_controller.compute(e_C, salt_interval) * salt_interval
         else:
+            # 熱とは違い、塩は制御タイミングの瞬間にしか投入しない
             salt_added = 0.0
        
+        # 物理シミュレーションを更新 (計算自体は毎秒 DT=1.0 で正確に行う)
         plant.step(Q_in=Q_in, salt_added=salt_added, dt=DT)
         
+        # ログ記録
         logs["Tw"][i] = plant.T_w
         logs["C"][i] = plant.concentration
         logs["sigma"][i] = plant.conductivity
@@ -78,7 +88,7 @@ def run_simulation(
 #シミュレーションの実行
 # ============================================================
 # 1. PID制御の結果を取得
-time, logs_pid = run_simulation(control_mode="PID", control_interval=30.0, salt_limit=1.0)
+time, logs_pid = run_simulation(control_mode="PID", salt_interval=30.0, salt_limit=1.0)
 
 # 2. オープンループの結果を取得
 _, logs_open = run_simulation(control_mode="OpenLoop")
