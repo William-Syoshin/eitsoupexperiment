@@ -47,8 +47,15 @@ class SoupPlant:
                  k_env: float = 0.0010,
                  k_loss: float = 0.0017,
                  # --- σモデル定数 ---
-                 alpha: float = 8.836,
-                 beta: float = 0.499,
+
+                 #water only 
+                 #alpha: float = 8.836,
+                 #beta: float = 0.499, 
+
+                 #changeable
+                 alpha: float = 6,
+                 beta: float = 1,
+
                  a: float = 0.02,
                  T_base: float = 25.0):
 

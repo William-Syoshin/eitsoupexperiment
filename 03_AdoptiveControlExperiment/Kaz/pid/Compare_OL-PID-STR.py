@@ -9,80 +9,91 @@ def run_simulation(
     control_mode="PID",
     salt_interval=30.0,
     salt_limit=1.0,
-    temp_interval=10.0,
+    temp_interval=1.0,
     kp_c=0.1, ki_c=0.005, kd_c=0.0,
     kp_t=0.05, ki_t=0.0005, kd_t=2.0
 ):
+    # ── 1. 基本設定 ──
     DT = 1.0; SIM_TIME = 600.0; STEPS = int(SIM_TIME / DT)
     time = np.arange(STEPS) * DT
     T_REF = 50.0; C_REF = 1.0
 
+    # 【ロボットの予習知識】水のみのフィッティング値
+    ALPHA_NOMINAL = 8.836
+    BETA_NOMINAL  = 0.499
+    TEMP_COEFF    = 0.02
+    T_BASE        = 25.0
+
+    # プラント（現実）の生成
     plant = SoupPlant(water_mass=500, potato_mass=100, T_w_init=20.0, T_p_init=20.0)
+    
+    # 【現実のスープの正体】ポテト入りでフィッティングした真の値を入れる
+    # ここが NOMINAL とズレていることで、適応制御の意義が生まれます
+    plant.alpha = 5.5  # ポテトの吸着により感度が低下している現実
+    plant.beta  = 1.2  # ポテトからの溶出によりベースが上がっている現実
+
     rate_limit = salt_limit / salt_interval
 
     # 濃度コントローラの準備
     if control_mode == "OpenLoop":
         conc_controller = OpenLoopController(fixed_rate=0.0)
     else:
-        # PID および STR はベースとしてこのPIDを使用
         conc_controller = PIDController(Kp=kp_c, Ki=ki_c, Kd=kd_c, output_min=0.0, output_max=rate_limit)
 
-    # STRコントローラの準備 (STRモードの時のみ使用)
+    # STRの準備
     str_unit = None
     if control_mode == "STR":
-        # 初期値はフィッティング結果を使用
-        str_unit = STRController(alpha_init=5, beta_init=1, a=0.02, T_base=25.0, lam=0.98)
+        # STRも最初は ALPHA_NOMINAL（水の値）からスタート
+        str_unit = STRController(alpha_init=ALPHA_NOMINAL, beta_init=BETA_NOMINAL, a=TEMP_COEFF, T_base=T_BASE, lam=0.98)
 
     # 温度PID
     pid_temp = PIDController(Kp=kp_t, Ki=ki_t, Kd=kd_t, output_min=0.0)
 
-    Q_in = 0.0; salt_added = 0.0
-    logs = {
-        "Tw": np.zeros(STEPS), "C": np.zeros(STEPS), "sigma": np.zeros(STEPS), 
-        "Qin": np.zeros(STEPS), "salt_cum": np.zeros(STEPS),
-        "alpha_hat": np.zeros(STEPS), "beta_hat": np.zeros(STEPS) # 推定値記録用
-    }
+    # ログ初期化
+    logs = {key: np.zeros(STEPS) for key in ["Tw", "C", "sigma", "Qin", "salt_cum", "alpha_hat", "beta_hat"]}
 
     for i in range(STEPS):
-        # 1. 温度制御
+        # --- 1. 温度制御 ---
         if i % temp_interval == 0:
             e_T = T_REF - plant.T_w
             Q_in = max(0.0, pid_temp.compute(e_T, temp_interval))
 
-        # 2. 濃度制御
+        # --- 2. 濃度制御 ---
         if i % salt_interval == 0:
+            temp_comp = (1.0 + TEMP_COEFF * (plant.T_w - T_BASE))
+            
             if control_mode == "OpenLoop":
                 salt_added = 6.0 if i == 0 else 0.0
+                
             elif control_mode == "PID":
-                C_hat = plant.estimated_concentration
-                e_C = C_REF - C_hat
+                # 固定PIDは「水だけの時のALPHA_NOMINAL」を信じて疑わない
+                # そのため、実際の濃度（plant.concentration）との間に認識のズレが生じる
+                C_hat_fixed = (plant.conductivity / temp_comp - BETA_NOMINAL) / ALPHA_NOMINAL
+                e_C = C_REF - C_hat_fixed
                 salt_added = conc_controller.compute(e_C, salt_interval) * salt_interval
+                
             elif control_mode == "STR":
-                # 【STRのキモ】まず現在のセンサー値からalphaとbetaを推定
-                # plant.salt_mass / plant.water_mass を暫定濃度として入力
-                a_hat, b_hat = str_unit.estimate(plant.conductivity, plant.concentration, plant.T_w)
+                # STRは現在のセンサー値から ALPHA と BETA をリアルタイム推定
+                alpha_h, beta_h = str_unit.estimate(plant.conductivity, plant.concentration, plant.T_w)
                 
-                # 推定されたalphaに基づきゲインを自動調整
-                kp_adj, ki_adj, kd_adj = str_unit.get_adjusted_gains(kp_c, ki_c, kd_c)
-                conc_controller.Kp, conc_controller.Ki, conc_controller.Kd = kp_adj, ki_adj, kd_adj
+                # 推定された alpha_h に基づきPIDゲインを自動調整
+                kp_a, ki_a, kd_a = str_unit.get_adjusted_gains(kp_c, ki_c, kd_c)
+                conc_controller.Kp, conc_controller.Ki, conc_controller.Kd = kp_a, ki_a, kd_a
                 
-                # 調整されたPIDで計算
-                e_C = C_REF - plant.concentration
+                # 最新の推定パラメータ(alpha_h, beta_h)を使って、正しい濃度を把握する
+                C_hat_adaptive = (plant.conductivity / temp_comp - beta_h) / alpha_h
+                e_C = C_REF - C_hat_adaptive
                 salt_added = conc_controller.compute(e_C, salt_interval) * salt_interval
         else:
             salt_added = 0.0
        
         plant.step(Q_in=Q_in, salt_added=salt_added, dt=DT)
         
-        # ログ記録
-        logs["Tw"][i] = plant.T_w
-        logs["C"][i] = plant.concentration
-        logs["sigma"][i] = plant.conductivity
-        logs["Qin"][i] = Q_in
-        logs["salt_cum"][i] = plant.salt_mass
+        # 記録
+        logs["Tw"][i], logs["C"][i], logs["sigma"][i] = plant.T_w, plant.concentration, plant.conductivity
+        logs["Qin"][i], logs["salt_cum"][i] = Q_in, plant.salt_mass
         if str_unit:
-            logs["alpha_hat"][i] = str_unit.theta[0, 0]
-            logs["beta_hat"][i] = str_unit.theta[1, 0]
+            logs["alpha_hat"][i], logs["beta_hat"][i] = str_unit.theta[0, 0], str_unit.theta[1, 0]
 
     return time, logs
 
