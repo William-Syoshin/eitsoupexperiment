@@ -53,8 +53,8 @@ class SoupPlant:
                  #beta: float = 0.499, 
 
                  #changeable
-                 alpha: float = 6,
-                 beta: float = 1,
+                 alpha: float = 11.925,
+                 beta: float = 0.3390,
 
                  a: float = 0.02,
                  T_base: float = 25.0):

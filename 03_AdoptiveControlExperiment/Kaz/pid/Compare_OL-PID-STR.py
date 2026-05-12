@@ -8,7 +8,7 @@ from Controls.AdaptiveControl import STRController # 前に作成したクラス
 def run_simulation(
     control_mode="PID",
     salt_interval=30.0,
-    salt_limit=1.0,
+    salt_limit=1,
     temp_interval=1.0,
     kp_c=0.1, ki_c=0.005, kd_c=0.0,
     kp_t=0.05, ki_t=0.0005, kd_t=2.0
@@ -27,10 +27,6 @@ def run_simulation(
     # プラント（現実）の生成
     plant = SoupPlant(water_mass=500, potato_mass=100, T_w_init=20.0, T_p_init=20.0)
     
-    # 【現実のスープの正体】ポテト入りでフィッティングした真の値を入れる
-    # ここが NOMINAL とズレていることで、適応制御の意義が生まれます
-    plant.alpha = 5.5  # ポテトの吸着により感度が低下している現実
-    plant.beta  = 1.2  # ポテトからの溶出によりベースが上がっている現実
 
     rate_limit = salt_limit / salt_interval
 
@@ -98,62 +94,74 @@ def run_simulation(
     return time, logs
 
 # ============================================================
-# 実行と描画
+# 実行と描画（ビビッドカラー・ラベル修正版）
 # ============================================================
 t, logs_pid  = run_simulation("PID")
 _, logs_open = run_simulation("OpenLoop")
 _, logs_str  = run_simulation("STR")
 
 fig, axes = plt.subplots(3, 2, figsize=(14, 10))
-fig.suptitle("Performance Comparison: Open-Loop vs. PID vs. STR (Adaptive)", fontsize=16, fontweight="bold")
+fig.suptitle("Performance Comparison: Open-Loop vs. PID vs. STR (Adaptive)", 
+             fontsize=16, fontweight="bold")
 
-# 各種プロットの設定（共通）
-styles = {'OL': {'color': 'gray', 'ls': '--', 'label': 'Open-Loop'},
-          'PID': {'color': 'blue', 'ls': '-', 'label': 'Fixed PID'},
-          'STR': {'color': 'red', 'ls': '-', 'label': 'STR (Adaptive)'}}
+# ビビッドなカラー設定
+# STR: Vivid Orange, PID: Strong Blue, OL: Vivid Green
+styles = {
+    'OL':  {'color': '#00FF00', 'ls': '-', 'lw': 2, 'label': 'Open-Loop'}, # 鮮やかな緑
+    'PID': {'color': '#0000FF', 'ls': '-', 'lw': 2, 'label': 'PID'},       # 強い青
+    'STR': {'color': '#FF8C00', 'ls': '-', 'lw': 2.5, 'label': 'STR (Adaptive)'} # 強いオレンジ
+}
 
-# ① Temperature
+# ① Temperature Profile
 ax = axes[0, 0]
-ax.plot(t, logs_open["Tw"], **styles['OL'], alpha=0.5)
-ax.plot(t, logs_pid["Tw"], **styles['PID'], alpha=0.7)
-ax.plot(t, logs_str["Tw"], **styles['STR'])
+ax.plot(t, logs_open["Tw"], color=styles['OL']['color'], alpha=0.3)
+ax.plot(t, logs_pid["Tw"],  color=styles['PID']['color'], alpha=0.4)
+ax.plot(t, logs_str["Tw"],  color="#FF4500", lw=2) # 温度は少し赤に寄せたオレンジ
 ax.axhline(50.0, color="black", ls=":", label="Target")
-ax.set(ylabel="Temp [°C]", title="① Temperature Profile"); ax.legend(); ax.grid(alpha=0.3)
+ax.set(ylabel="Temp [°C]", title="① Temperature Profile")
+ax.grid(alpha=0.3)
 
-# ② Heating Power
+# ② Heating Power (Qin: 紫系統を維持)
 ax = axes[0, 1]
-ax.plot(t, logs_open["Qin"], **styles['OL'], alpha=0.5)
-ax.plot(t, logs_pid["Qin"], **styles['PID'], alpha=0.7)
-ax.plot(t, logs_str["Qin"], **styles['STR'])
-ax.set(ylabel="Q_in [°C/s]", title="② Heating Power"); ax.grid(alpha=0.3)
+ax.plot(t, logs_open["Qin"], color="#E0B0FF", alpha=0.5) # ライトパープル
+ax.plot(t, logs_pid["Qin"],  color="#9932CC", alpha=0.6) # ダークオーキッド
+ax.plot(t, logs_str["Qin"],  color="#4B0082", lw=1.5)    # インディゴ
+ax.set(ylabel="Q_in [°C/s]", title="② Manipulated Variable: Heating Power (Purple)")
+ax.grid(alpha=0.3)
 
-# ③ Concentration
+# ③ Salinity Concentration (ここで凡例を表示)
 ax = axes[1, 0]
-ax.plot(t, logs_open["C"], **styles['OL'], alpha=0.5)
-ax.plot(t, logs_pid["C"], **styles['PID'], alpha=0.7)
-ax.plot(t, logs_str["C"], **styles['STR'])
-ax.axhline(1.0, color="black", ls=":", label="Target 1.0%")
-ax.set(ylabel="Conc [%]", title="③ Salinity Concentration"); ax.grid(alpha=0.3)
+ax.plot(t, logs_open["C"], **styles['OL'])
+ax.plot(t, logs_pid["C"],  **styles['PID'])
+ax.plot(t, logs_str["C"],  **styles['STR'])
+ax.axhline(1.0, color="#333333", ls="--", label="Target 1.0%", lw=1)
+ax.set(ylabel="Conc [%]", title="③ Salinity Concentration")
+ax.legend(loc='lower right', fontsize=10, frameon=True, shadow=True) # 凡例を強調
+ax.grid(alpha=0.3)
 
-# ④ Conductivity
+# ④ Electrical Conductivity
 ax = axes[1, 1]
-ax.plot(t, logs_open["sigma"], **styles['OL'], alpha=0.5)
-ax.plot(t, logs_pid["sigma"], **styles['PID'], alpha=0.7)
-ax.plot(t, logs_str["sigma"], **styles['STR'])
-ax.set(ylabel="sigma [mS/cm]", title="④ Electrical Conductivity"); ax.grid(alpha=0.3)
+ax.plot(t, logs_open["sigma"], **styles['OL'])
+ax.plot(t, logs_pid["sigma"],  **styles['PID'])
+ax.plot(t, logs_str["sigma"],  **styles['STR'])
+ax.set(ylabel="sigma [mS/cm]", title="④ Electrical Conductivity")
+ax.grid(alpha=0.3)
 
-# ⑤ Total Salt
+# ⑤ Total Salt Added
 ax = axes[2, 0]
-ax.plot(t, logs_open["salt_cum"], **styles['OL'], alpha=0.5)
-ax.plot(t, logs_pid["salt_cum"], **styles['PID'], alpha=0.7)
-ax.plot(t, logs_str["salt_cum"], **styles['STR'])
-ax.set(xlabel="Time [s]", ylabel="Salt [g]", title="⑤ Total Salt Added"); ax.grid(alpha=0.3)
+ax.plot(t, logs_open["salt_cum"], **styles['OL'])
+ax.plot(t, logs_pid["salt_cum"],  **styles['PID'])
+ax.plot(t, logs_str["salt_cum"],  **styles['STR'])
+ax.set(xlabel="Time [s]", ylabel="Salt [g]", title="⑤ Total Salt Added")
+ax.grid(alpha=0.3)
 
-# ⑥ STR Parameter Estimation (見どころ！)
+# ⑥ STR Parameter Estimation
 ax = axes[2, 1]
-ax.plot(t, logs_str["alpha_hat"], color="darkred", label="Estimated alpha")
-ax.plot(t, logs_str["beta_hat"], color="darkorange", label="Estimated beta")
-ax.set(xlabel="Time [s]", title="⑥ STR Parameter Identification"); ax.legend(); ax.grid(alpha=0.3)
+ax.plot(t, logs_str["alpha_hat"], color="#8B0000", lw=2, label="Estimated alpha") # ダークレッド
+ax.plot(t, logs_str["beta_hat"],  color="#FFD700", lw=2, label="Estimated beta")  # ゴールド
+ax.set(xlabel="Time [s]", title="⑥ STR Parameter Identification")
+ax.legend(loc='center right', fontsize=10)
+ax.grid(alpha=0.3)
 
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 plt.show()
