@@ -169,59 +169,100 @@ plt.show()
 import matplotlib.pyplot as plt
 import numpy as np
 
-# --- 論文・フル幅（15cm）最適化設定 ---
+# --- 共通の基本スタイル設定 ---
 plt.rcParams.update({
-    "font.family": "serif",       # Times New Roman系
-    "font.size": 10,              # 標準10pt
+    "font.family": "serif",
+    "font.size": 10,
     "axes.labelsize": 10,
     "xtick.labelsize": 9,
     "ytick.labelsize": 9,
-    "legend.fontsize": 9,
+    "legend.fontsize": 8,
     "lines.linewidth": 1.5,
 })
 
-# 1. 誤差データの計算
-err_ol  = abs(logs_open["C"][-1] - 1.0)
-err_pid = abs(logs_pid["C"][-1]  - 1.0)
-err_str = abs(logs_str["C"][-1]  - 1.0)
+# 15cm = 5.91インチ, 8cm = 3.15インチ
+W_15 = 15 / 2.54
+W_8  = 8 / 2.54
 
-errors = [err_ol, err_pid, err_str]
+# ビビッドカラー設定
+colors = {'OL': '#00FF00', 'PID': '#0000FF', 'STR': '#FF8C00'}
+
+# ============================================================
+# Figure 6: 4-Panel Analysis (Width: 15cm)
+# ============================================================
+fig6, axes = plt.subplots(2, 2, figsize=(W_15, 10 / 2.54)) # 高さは10cm程度
+
+# (0,0) Salinity Concentration
+ax = axes[0, 0]
+ax.step(t, logs_open["C"], color=colors['OL'], where='post', label='Open-Loop')
+ax.step(t, logs_pid["C"],  color=colors['PID'], where='post', label='PID')
+ax.step(t, logs_str["C"],  color=colors['STR'], where='post', lw=2.0, label='STR (Adaptive)')
+ax.axhline(1.0, color="#333333", ls="--", lw=1.0, label="Target")
+ax.set_ylabel("Conc. [%]")
+ax.set_title("(a) Salinity Concentration", fontsize=11, fontweight='bold')
+ax.legend(loc='lower right', frameon=True)
+ax.grid(alpha=0.3)
+
+# (0,1) Electrical Conductivity
+ax = axes[0, 1]
+ax.plot(t, logs_open["sigma"], color=colors['OL'], alpha=0.6)
+ax.plot(t, logs_pid["sigma"],  color=colors['PID'], alpha=0.8)
+ax.plot(t, logs_str["sigma"],  color=colors['STR'])
+ax.set_ylabel("sigma [mS/cm]")
+ax.set_title("(b) Electrical Conductivity", fontsize=11, fontweight='bold')
+ax.grid(alpha=0.3)
+
+# (1,0) Total Salt Added
+ax = axes[1, 0]
+ax.step(t, logs_open["salt_cum"], color=colors['OL'], where='post')
+ax.step(t, logs_pid["salt_cum"],  color=colors['PID'], where='post')
+ax.step(t, logs_str["salt_cum"],  color=colors['STR'], where='post')
+ax.set_xlabel("Time [s]")
+ax.set_ylabel("Total Salt [g]")
+ax.set_title("(c) Total Salt Added", fontsize=11, fontweight='bold')
+ax.grid(alpha=0.3)
+
+# (1,1) STR Parameter Identification
+ax = axes[1, 1]
+ax.plot(t, logs_str["alpha_hat"], color="#8B0000", lw=2, label="Estimated alpha")
+ax.plot(t, logs_str["beta_hat"],  color="#FFD700", lw=2, label="Estimated beta")
+ax.set_xlabel("Time [s]")
+ax.set_ylabel("Param Value")
+ax.set_title("(d) Parameter Identification", fontsize=11, fontweight='bold')
+ax.legend(loc='center right')
+ax.grid(alpha=0.3)
+
+plt.tight_layout(pad=1.5)
+plt.savefig("Fig6_Control_Analysis_15cm.svg", format="svg")
+plt.savefig("Fig6_Control_Analysis_15cm.png", dpi=300)
+
+# ============================================================
+# Figure 7: Error Comparison (Width: 8cm)
+# ============================================================
+fig7, ax7 = plt.subplots(figsize=(W_8, 6 / 2.54))
+
+err_data = [
+    abs(logs_open["C"][-1] - 1.0),
+    abs(logs_pid["C"][-1]  - 1.0),
+    abs(logs_str["C"][-1]  - 1.0)
+]
 labels = ['Open-Loop', 'PID', 'Adaptive\n(STR)']
-colors = ['#00FF00', '#0000FF', '#FF8C00'] # ビビッドカラー
+bar_colors = [colors['OL'], colors['PID'], colors['STR']]
 
-# 2. 描画 (幅15cm = 5.9インチ, 高さ 6.5cm = 2.56インチ)
-# 左右の幅比率を 1.6 : 1 にして、メインのグラフを大きく見せます
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15/2.54, 6.5/2.54), 
-                               gridspec_kw={'width_ratios': [1.6, 1]})
+bars = ax7.bar(labels, err_data, color=bar_colors, edgecolor='black', linewidth=0.8)
+ax7.set_ylabel("Final Steady-State Error [%]")
+ax7.set_title("Steady-state Error Comparison", fontsize=11, fontweight='bold')
+ax7.set_ylim(0, 0.3)
+ax7.grid(axis='y', alpha=0.3)
 
-# --- (a) Time-series Response ---
-ax1.plot(t, logs_open["C"], color=colors[0], label='Open-Loop')
-ax1.plot(t, logs_pid["C"],  color=colors[1], label='PID')
-ax1.plot(t, logs_str["C"],  color=colors[2], lw=2.0, label='Adaptive (STR)')
-ax1.axhline(1.0, color="#333333", ls="--", lw=1.0, label="Target")
-
-ax1.set_xlabel("Time [s]")
-ax1.set_ylabel("Salinity Conc. [%]")
-ax1.set_title("(a) Time-series Response", fontsize=10, fontweight='bold')
-ax1.legend(loc='lower right', frameon=True, fontsize=8)
-ax1.grid(alpha=0.3)
-
-# --- (b) Steady-state Error ---
-bars = ax2.bar(labels, errors, color=colors, alpha=0.8, edgecolor='black', linewidth=0.8)
-ax2.set_ylabel("Final Error [%]")
-ax2.set_title("(b) Steady-state Error", fontsize=10, fontweight='bold')
-ax2.set_ylim(0, 0.3) # 誤差を見やすく固定
-ax2.grid(axis='y', alpha=0.3)
-
-# バーの上に値を表示
+# 棒の上に数値を表示
 for bar in bars:
     height = bar.get_height()
-    ax2.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-             f'{height:.2f}', ha='center', va='bottom', fontsize=8)
+    ax7.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+             f'{height:.2f}', ha='center', va='bottom', fontsize=9)
 
-plt.tight_layout(pad=1.2)
+plt.tight_layout()
+plt.savefig("Fig7_Error_Comparison_8cm.svg", format="svg")
+plt.savefig("Fig7_Error_Comparison_8cm.png", dpi=300)
 
-# 保存
-plt.savefig("fig6_7_combined_15cm.svg", format="svg")
-plt.savefig("fig6_7_combined_15cm.png", format="png", dpi=300)
 plt.show()
