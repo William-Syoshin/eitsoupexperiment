@@ -165,3 +165,63 @@ ax.grid(alpha=0.3)
 
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 plt.show()
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+# --- 論文・フル幅（15cm）最適化設定 ---
+plt.rcParams.update({
+    "font.family": "serif",       # Times New Roman系
+    "font.size": 10,              # 標準10pt
+    "axes.labelsize": 10,
+    "xtick.labelsize": 9,
+    "ytick.labelsize": 9,
+    "legend.fontsize": 9,
+    "lines.linewidth": 1.5,
+})
+
+# 1. 誤差データの計算
+err_ol  = abs(logs_open["C"][-1] - 1.0)
+err_pid = abs(logs_pid["C"][-1]  - 1.0)
+err_str = abs(logs_str["C"][-1]  - 1.0)
+
+errors = [err_ol, err_pid, err_str]
+labels = ['Open-Loop', 'PID', 'Adaptive\n(STR)']
+colors = ['#00FF00', '#0000FF', '#FF8C00'] # ビビッドカラー
+
+# 2. 描画 (幅15cm = 5.9インチ, 高さ 6.5cm = 2.56インチ)
+# 左右の幅比率を 1.6 : 1 にして、メインのグラフを大きく見せます
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15/2.54, 6.5/2.54), 
+                               gridspec_kw={'width_ratios': [1.6, 1]})
+
+# --- (a) Time-series Response ---
+ax1.plot(t, logs_open["C"], color=colors[0], label='Open-Loop')
+ax1.plot(t, logs_pid["C"],  color=colors[1], label='PID')
+ax1.plot(t, logs_str["C"],  color=colors[2], lw=2.0, label='Adaptive (STR)')
+ax1.axhline(1.0, color="#333333", ls="--", lw=1.0, label="Target")
+
+ax1.set_xlabel("Time [s]")
+ax1.set_ylabel("Salinity Conc. [%]")
+ax1.set_title("(a) Time-series Response", fontsize=10, fontweight='bold')
+ax1.legend(loc='lower right', frameon=True, fontsize=8)
+ax1.grid(alpha=0.3)
+
+# --- (b) Steady-state Error ---
+bars = ax2.bar(labels, errors, color=colors, alpha=0.8, edgecolor='black', linewidth=0.8)
+ax2.set_ylabel("Final Error [%]")
+ax2.set_title("(b) Steady-state Error", fontsize=10, fontweight='bold')
+ax2.set_ylim(0, 0.3) # 誤差を見やすく固定
+ax2.grid(axis='y', alpha=0.3)
+
+# バーの上に値を表示
+for bar in bars:
+    height = bar.get_height()
+    ax2.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+             f'{height:.2f}', ha='center', va='bottom', fontsize=8)
+
+plt.tight_layout(pad=1.2)
+
+# 保存
+plt.savefig("fig6_7_combined_15cm.svg", format="svg")
+plt.savefig("fig6_7_combined_15cm.png", format="png", dpi=300)
+plt.show()
