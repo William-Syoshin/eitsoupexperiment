@@ -1,0 +1,126 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ==========================================
+# 1. 共通の設定 (温度補正基準)
+# ==========================================
+T_BASE = 25.0       # Reference temperature (25.0 C)
+A_COEFF = 0.02      # Temperature coefficient (2% per C)
+TOTAL_WEIGHT = 600.0  # Total soup weight is always fixed at 600g
+
+# 実験で追加していった塩の絶対質量 (1g, 2g, 3g, 4g, 5g, 6g)
+salt_added_grams = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+
+# ==========================================
+# 2. スープごとの実験データ入力 (水の重さがそれぞれ異なる)
+# ==========================================
+
+# --- Soup 1: Pure Water ---
+T_meas_water = 50.0
+water_mass_w = 600.0  # No ingredients, so water is full 600g
+# 0gから6gまで入れた時の実測伝導率 [mS/cm]
+sigma_data_water = np.array([0.25, 3.64, 6.11, 10.1, 12.82, 14.95, 18.3]) 
+
+# --- Soup 2: Potato Soup ---
+T_meas_potato = 50.0
+potato_mass = 100.0
+water_mass_p = TOTAL_WEIGHT - potato_mass  # 600 - 100 = 500g
+sigma_data_potato = np.array([0.23, 3.50, 5.90, 9.80, 12.40, 14.50, 17.80]) # Dummy data
+
+# --- Soup 3: Miso Soup (Tofu + Miso Paste) ---
+T_meas_miso = 50.0
+tofu_mass = 100.0
+miso_paste_mass = 35.0
+# 水の重さ = 全体(600g) - 豆腐(100g) - 味噌ペースト(35g) = 465g
+water_mass_m = TOTAL_WEIGHT - tofu_mass - miso_paste_mass 
+sigma_data_miso = np.array([5.50, 8.80, 11.20, 15.00, 17.50, 19.80, 23.20]) # Dummy data
+
+
+# ==========================================
+# 3. 論文の定義に基づく濃度 C [%] の自動計算
+# ==========================================
+# C = (加えた塩 / 水の重さ) * 100
+C_water  = (salt_added_grams / water_mass_w) * 100.0
+C_potato = (salt_added_grams / water_mass_p) * 100.0
+C_miso   = (salt_added_grams / water_mass_m) * 100.0
+
+
+# ==========================================
+# 4. フィッティング実行関数
+# ==========================================
+def fit_conductivity(C_data, sigma_data, T_meas):
+    slope, intercept = np.polyfit(C_data, sigma_data, 1)
+    temp_factor = 1.0 + A_COEFF * (T_meas - T_BASE)
+    
+    alpha = slope / temp_factor
+    beta = intercept / temp_factor
+    
+    # R^2 calculation
+    sigma_pred = (alpha * C_data + beta) * temp_factor
+    ss_res = np.sum((sigma_data - sigma_pred) ** 2)
+    ss_tot = np.sum((sigma_data - np.mean(sigma_data)) ** 2)
+    r_squared = 1 - (ss_res / ss_tot)
+    
+    return alpha, beta, r_squared
+
+alpha_w, beta_w, r2_w = fit_conductivity(C_water, sigma_data_water, T_meas_water)
+alpha_p, beta_p, r2_p = fit_conductivity(C_potato, sigma_data_potato, T_meas_potato)
+alpha_m, beta_m, r2_m = fit_conductivity(C_miso, sigma_data_miso, T_meas_miso)
+
+
+# ==========================================
+# 5. 結果の出力 (English output)
+# ==========================================
+print("===================================================\n")
+print(f"[Soup 1: Pure Water] (Calculated Water Mass: {water_mass_w:.1f}g)")
+print(f"  alpha (Sensitivity)      = {alpha_w:.4f}")
+print(f"  beta  (Base Conductivity) = {beta_w:.4f}")
+print(f"  ★ R^2 (Model Fit)        = {r2_w:.4f}\n")
+
+print(f"[Soup 2: Potato Soup] (Calculated Water Mass: {water_mass_p:.1f}g)")
+print(f"  alpha (Sensitivity)      = {alpha_p:.4f}")
+print(f"  beta  (Base Conductivity) = {beta_p:.4f}")
+print(f"  ★ R^2 (Model Fit)        = {r2_p:.4f}\n")
+
+print(f"[Soup 3: Miso Soup] (Calculated Water Mass: {water_mass_m:.1f}g)")
+print(f"  alpha (Sensitivity)      = {alpha_m:.4f}")
+print(f"  beta  (Base Conductivity) = {beta_m:.4f}")
+print(f"  ★ R^2 (Model Fit)        = {r2_m:.4f}")
+print("===================================================\n")
+
+
+# ==========================================
+# 6. グラフ描画（画面表示のみ・保存なし）
+# ==========================================
+plt.figure(figsize=(10, 6))
+
+# Plot Water
+C_dense_w = np.linspace(0, C_water[-1], 100)
+factor_w = 1.0 + A_COEFF * (T_meas_water - T_BASE)
+plt.plot(C_water, sigma_data_water, 'bo', label='Data: Pure Water')
+# ★ \lpha から \\alpha に完全に修正しました
+plt.plot(C_dense_w, (alpha_w * C_dense_w + beta_w) * factor_w, 'b-', 
+         label=f'Water Model ($\\alpha$={alpha_w:.2f}, $\\beta$={beta_w:.2f})')
+
+# Plot Potato
+C_dense_p = np.linspace(0, C_potato[-1], 100)
+factor_p = 1.0 + A_COEFF * (T_meas_potato - T_BASE)
+plt.plot(C_potato, sigma_data_potato, 'ro', label='Data: Potato Soup')
+plt.plot(C_dense_p, (alpha_p * C_dense_p + beta_p) * factor_p, 'r-', 
+         label=f'Potato Model ($\\alpha$={alpha_p:.2f}, $\\beta$={beta_p:.2f})')
+
+# Plot Miso
+C_dense_m = np.linspace(0, C_miso[-1], 100)
+factor_m = 1.0 + A_COEFF * (T_meas_miso - T_BASE)
+plt.plot(C_miso, sigma_data_miso, 'go', label='Data: Miso Soup')
+plt.plot(C_dense_m, (alpha_m * C_dense_m + beta_m) * factor_m, 'g-', 
+         label=f'Miso Model ($\\alpha$={alpha_m:.2f}, $\\beta$={beta_m:.2f})')
+
+plt.title('Conductivity Fitting based on Salt Mass vs Water Mass Ratio', fontsize=12, fontweight='bold')
+plt.xlabel('Salinity Concentration C [%] (Salt / Water Mass)', fontsize=10)
+plt.ylabel('Electrical Conductivity $\\sigma$ [mS/cm]', fontsize=10)
+plt.legend(loc='upper left')
+plt.grid(True, alpha=0.3)
+
+# 画面にポップアップ表示する（ファイル保存はしません）
+plt.show()
