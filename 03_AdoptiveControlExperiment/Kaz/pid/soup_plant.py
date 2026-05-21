@@ -52,7 +52,7 @@ class SoupPlant:
                  #alpha: float = 8.836,
                  #beta: float = 0.499, 
 
-                 #changeable
+                 #wate + potato
                  alpha: float = 11.925,
                  beta: float = 0.3390,
 
