@@ -1,28 +1,39 @@
-import urx
-import time
+import math
+from rtde_control import RTDEControlInterface
+from rtde_receive import RTDEReceiveInterface
 
-robot = urx.Robot("192.168.1.100")
+ROBOT_IP = "192.168.1.200"
 
-current_joints = robot.getj()
+rtde_c = RTDEControlInterface(ROBOT_IP)
+rtde_r = RTDEReceiveInterface(ROBOT_IP)
+
+current_joints = rtde_r.getActualQ()
 print("現在の姿勢:", current_joints)
 
 # ホームポジション（直立）
 home = [0, -1.5708, 0, -1.5708, 0, 0]
 
 # お辞儀ポジション
-bow = [0, -1.0, -1.2, -1.5708, 0, 0]
+state1 = [math.radians(0), math.radians(-70), math.radians(85.36),
+            math.radians(-108), math.radians(-90), math.radians(0)]
+
+state2 = [math.radians(0), math.radians(-60), math.radians(93.5),
+            math.radians(-125), math.radians(-90), math.radians(0)]
+
+speed = 1
+acceleration = 0.3
 
 print("ホームポジションへ移動...")
-robot.movej(home, acc=0.3, vel=0.3, wait=False)
-time.sleep(3)
+rtde_c.moveJ(home, speed, acceleration)
+for i in range(10):
+    print("お辞儀...")
+    rtde_c.moveJ(state1, speed, acceleration)
 
-print("お辞儀...")
-robot.movej(bow, acc=0.3, vel=0.3, wait=False)
-time.sleep(4)
+    print("お辞儀...")
+    rtde_c.moveJ(state2, speed, acceleration)
 
 print("戻ります...")
-robot.movej(home, acc=0.3, vel=0.3, wait=False)
-time.sleep(4)
+rtde_c.moveJ(home, speed, acceleration)
 
 print("完了！")
-robot.close()
+rtde_c.stopScript()
