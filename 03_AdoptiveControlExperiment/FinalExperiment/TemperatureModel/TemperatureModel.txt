@@ -1,10 +1,23 @@
-=== Step 1: IHと鍋の基本特性（水のみデータより） ===
-Q_in  (一定加熱力) = 0.2932
-k_env (空気への放熱) = 0.0096
-★ R^2 (水のみモデル) = 0.9803
+===================================================
+=== Step 1: Basic Thermal Dynamics (Water Only) ===
+===================================================
+Q_in     (Heating Power MV)        = 0.2932
+k_env    (Heat Loss to Ambient)     = 0.0096
+★ R^2   (Water Only Model Fit)     = 0.9803
 
-=== Step 2: 芋の熱吸収特性（水＋芋データより） ===
-k_loss   (水から芋へ逃げる熱) = 0.0017
-k_absorb (芋が温まるスピード) = 0.0102 (※物理法則より自動計算)
-★ R^2 (水＋芋モデル)  = 0.9262
+===================================================
+=== Step 2: Potato Dynamics (Water + Potato)    ===
+===================================================
+Capacity Ratio (Liquid / Solid)    = 5.81
+k_loss   (Heat transfer: W -> P)   = 0.0017
+k_absorb (Heat absorb: Potato)     = 0.0101
+★ R^2   (Potato Model Fit)         = 0.9272
+
+===================================================
+=== Step 3: Tofu Dynamics (Miso Soup + Tofu)    ===
+===================================================
+Capacity Ratio (Liquid / Solid)    = 5.21
+k_loss   (Heat transfer: L -> T)   = 0.0033
+k_absorb (Heat absorb: Tofu)       = 0.0171
+★ R^2   (Miso Tofu Model Fit)      = 0.8186
 ===================================================
