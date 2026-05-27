@@ -50,7 +50,8 @@ class STRController:
         alpha_hat = self.theta[0, 0]
         
         # alphaが小さくなったら(感度が落ちたら)、その分ゲインを上げて補償する
-        # 安全のため、極端な値にならないようガードをかける
-        ratio = self.alpha_nominal / max(0.1, alpha_hat)
-        
+        # ゲイン比を最大3倍までに制限（センサー異常時の暴走防止）
+        ratio = self.alpha_nominal / max(self.alpha_nominal / 3.0, alpha_hat)
+        ratio = min(ratio, 3.0)
+
         return Kp_nom * ratio, Ki_nom * ratio, Kd_nom * ratio

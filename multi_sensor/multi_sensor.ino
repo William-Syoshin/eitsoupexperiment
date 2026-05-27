@@ -1,78 +1,104 @@
-#include <Adafruit_MAX31865.h>
+// ============================================================
+// multi_sensor.ino  —  ESP32 Sensor & Actuator Interface
+// ============================================================
+// Protocol:
+//   Arduino → PC : "T:<pot_C>,RT:<room_C>\n"  (every ~1 s)
+//   PC → Arduino : "S<milliseconds>\n"  e.g. "S3500\n"
+//   Arduino → PC : "ACK:SALT_DONE\n"   (after motor stops)
+//
+// EC is measured manually with a commercial sensor and entered
+// on the PC side. Arduino only handles temperature + motor.
+// ============================================================
 
-// --- MAX31865 (PT100) の設定 ---
+#include <Adafruit_MAX31865.h>
+#include <DHT.h>
+
+// --- MAX31865 (PT100) ---
 Adafruit_MAX31865 thermo = Adafruit_MAX31865(5);
 #define RREF      430.0
 #define RNOMINAL  100.0
 
-// --- 伝導率(TDS/EC)センサーの設定 ---
-const int EC_PIN = 32;
+// --- DHT22 (room temperature) ---
+#define DHT_PIN  14
+#define DHT_TYPE DHT22
+DHT dht(DHT_PIN, DHT_TYPE);
 
-// --- ソルトミル（relay-T73モジュール）の設定 ---
-const int RELAY_PIN = 27; // リレーのIN（S / SIG）端子に繋ぐピン
+// --- Salt mill relay ---
+const int RELAY_PIN    = 27;
+const int MOTOR_MAX_MS = 25000;  // safety cap: 25 s
+
+// --- Timing ---
+unsigned long lastSendMs = 0;
+const unsigned long SEND_INTERVAL_MS = 1000;
+
+// ── センサーデータをCSV形式で送信 ──
+void sendSensorData() {
+  float potTemp  = thermo.temperature(RNOMINAL, RREF);
+  float roomTemp = dht.readTemperature();
+
+  Serial.print("T:");
+  Serial.print(potTemp, 2);
+  Serial.print(",RT:");
+  if (isnan(roomTemp)) {
+    Serial.print("nan");
+  } else {
+    Serial.print(roomTemp, 2);
+  }
+  Serial.println();
+
+  // PT100エラーチェック
+  uint8_t fault = thermo.readFault();
+  if (fault) {
+    Serial.print("ERR:PT100_FAULT_0x");
+    Serial.println(fault, HEX);
+    thermo.clearFault();
+  }
+}
+
+// ── ソルトミルをms[ミリ秒]だけ動かす ──
+void runSaltMill(int duration_ms) {
+  digitalWrite(RELAY_PIN, HIGH);
+  delay(duration_ms);
+  digitalWrite(RELAY_PIN, LOW);
+  Serial.println("ACK:SALT_DONE");
+}
+
+// ── シリアルコマンドの処理 ──
+void handleCommand(String cmd) {
+  cmd.trim();
+  if (cmd.startsWith("S") || cmd.startsWith("s")) {
+    int duration_ms = cmd.substring(1).toInt();
+    if (duration_ms > 0 && duration_ms <= MOTOR_MAX_MS) {
+      runSaltMill(duration_ms);
+    } else {
+      Serial.print("ERR:INVALID_DURATION:");
+      Serial.println(duration_ms);
+    }
+  } else {
+    Serial.print("ERR:UNKNOWN_CMD:");
+    Serial.println(cmd);
+  }
+}
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("ESP32 - Robotic Chef Sensor & Actuator Test!");
-
-  // PT100を3線式で初期化
   thermo.begin(MAX31865_3WIRE);
-
-  // リレー制御ピンの初期化と安全対策
+  dht.begin();
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW); // 起動時は必ずOFF（モーター停止）にしておく
+  digitalWrite(RELAY_PIN, LOW);
+  Serial.println("READY");
 }
 
 void loop() {
-  // 1. PT100から温度を取得
-  float temperature = thermo.temperature(RNOMINAL, RREF);
-  Serial.print("Temperature = ");
-  Serial.print(temperature);
-  Serial.println(" C");
-
-  // 2. 伝導率センサーからアナログ値と電圧を取得
-  int ecAnalogValue = analogRead(EC_PIN);
-  float ecVoltage = ecAnalogValue * (3.3 / 4095.0);
-
-  Serial.print("Conductivity Analog = ");
-  Serial.print(ecAnalogValue);
-  Serial.print(" (Voltage: ");
-  Serial.print(ecVoltage);
-  Serial.println(" V)");
-
-  // 3. エラーチェック（PT100の断線など）
-  uint8_t fault = thermo.readFault();
-  if (fault) {
-    Serial.print("Fault 0x"); Serial.println(fault, HEX);
-    thermo.clearFault();
+  // コマンド受信チェック
+  if (Serial.available() > 0) {
+    String cmd = Serial.readStringUntil('\n');
+    handleCommand(cmd);
   }
 
-  // ==========================================
-  // 4. 【追加】ロボットシェフの自動塩分調整ロジック
-  // ==========================================
-  // 伝導率の電圧が0.5Vを下回ったら「塩が足りない」と判断する例
-  if (ecVoltage < 0.5) {
-    Serial.println(">>> 塩が足りません！ソルトミルを起動します...");
-    
-    // リレーをONにしてモーターを回す
-    digitalWrite(RELAY_PIN, HIGH); 
-    
-    // 0.5秒間だけ挽く（一気に大量に入れないためのフィードバック制御）
-    delay(500); 
-    
-    // リレーをOFFにしてモーターを止める
-    digitalWrite(RELAY_PIN, LOW); 
-    
-    Serial.println(">>> 塩を投入しました。溶け切るまで待機します。");
-    // 塩が水に溶けて伝導率センサーに反映されるまで3秒待つ（連続投入を防ぐ）
-    delay(3000); 
-    
-  } else {
-    Serial.println(">>> 十分な塩加減です。");
+  // 1秒ごとにセンサーデータ送信
+  if (millis() - lastSendMs >= SEND_INTERVAL_MS) {
+    lastSendMs = millis();
+    sendSensorData();
   }
-
-  Serial.println("-------------------------");
-  
-  // 通常のループ待機時間
-  delay(1000); 
 }
