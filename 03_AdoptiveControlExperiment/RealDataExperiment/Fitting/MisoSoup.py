@@ -5,7 +5,7 @@ from scipy.stats import linregress
 import io
 
 # ==========================================
-# 1. データの入力エリア（水580g + 味噌20gのデータを設定済み）
+# 1. データの入力エリア（水580g + 味噌20g）
 # ==========================================
 data_text = """
 試行	C (g)	T (°C)	σ (mS/cm)
@@ -41,21 +41,29 @@ data_text = """
 # ==========================================
 # 2. 定数の設定
 # ==========================================
-T_room = 24.6      # 室温 (°C)
-a_temp = 0.02      # 温度係数
-M_water = 580.0    # 水の質量 (g) ← 580gに変更！
+T_room = 24.6        # 室温 (°C)
+a_temp = 0.02        # 温度係数
+M_water = 580.0      # 水の質量 (g)
+M_miso = 20.0        # 味噌の質量 (g)
+
+# ベースとなる液相の質量（塩を入れる前）
+M_base_liquid = M_water + M_miso  # = 600g
+
+# 味噌由来の初期塩分を計算 (20g * 8.7%)
+miso_salt_ratio = 0.087
+initial_salt = M_miso * miso_salt_ratio  # = 1.74g
 
 # データをデータフレームとして読み込み
 df = pd.read_csv(io.StringIO(data_text.strip()), sep='\t')
 
 # ==========================================
-# 3. 計算処理
+# 3. 計算処理 (厳密な質量パーセント濃度)
 # ==========================================
-# 塩分濃度 C(%) の計算: (塩の質量 / 水の質量(580g)) * 100
-df['Salinity (%)'] = (df['C (g)'] / M_water) * 100
+# 分子: 加えた塩 C(g) + 味噌の初期塩分(1.74g)
+# 分母: ベース液相(600g) + 加えた塩 C(g)
+df['Salinity (%)'] = ((df['C (g)'] + initial_salt) / (M_base_liquid + df['C (g)'])) * 100
 
 # 温度補正済み導電率 σ_comp の計算
-# σ_comp = σ / (1 + 0.02 * (T - T_room))
 df['σ_comp'] = df['σ (mS/cm)'] / (1 + a_temp * (df['T (°C)'] - T_room))
 
 # ==========================================
@@ -70,10 +78,12 @@ a = slope
 b = intercept
 r_squared = r_value**2
 
-print("=== 水580g + 味噌20g フィッティング結果 ===")
+print("=== 水580g + 味噌20g (厳密な濃度定義) フィッティング結果 ===")
+print(f"ベース液相質量: {M_base_liquid} g (水580g + 味噌20g)")
+print(f"味噌由来の初期塩分: {initial_salt:.2f} g")
 print(f"モデル式: σ_comp = a * C + b")
 print(f"a (感度): {a:.4f}")
-print(f"b (初期ベースライン): {b:.4f}")
+print(f"b (絶対ベースライン): {b:.4f}")
 print(f"決定係数 R^2:    {r_squared:.4f}")
 
 # ==========================================
@@ -93,7 +103,7 @@ x_line = np.linspace(X.min(), X.max(), 100)
 y_line = a * x_line + b
 plt.plot(x_line, y_line, color='orange', linewidth=2, label=f'Fit: y={a:.2f}x + {b:.2f}')
 
-plt.xlabel('Salinity C(t) [%] (Base: 580g Water)')
+plt.xlabel('Strict Salinity Concentration [%]\n((Added Salt + 1.74g) / (600g + Added Salt))')
 plt.ylabel('Compensated Conductivity σ_comp [mS/cm]')
 plt.title('Calibration Curve for Water (580g) + Miso (20g)')
 plt.legend()

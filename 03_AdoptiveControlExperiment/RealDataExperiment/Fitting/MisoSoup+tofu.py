@@ -41,21 +41,30 @@ data_text = """
 # ==========================================
 # 2. 定数の設定
 # ==========================================
-T_room = 24.6      # 室温 (°C)
-a_temp = 0.02      # 温度係数
-M_water = 480.0    # 水の質量 (g) ← 480gに変更！
+T_room = 24.6          # 室温 (°C)
+a_temp = 0.02          # 温度係数
+M_water = 480.0        # 水の質量 (g)
+M_miso = 20.0          # 味噌の質量 (g)
+# 豆腐100gは固形物（非溶媒）として計算から完全に除外します
+
+# 味噌由来の初期塩分を計算 (20g * 8.7%)
+miso_salt_ratio = 0.087
+initial_salt = M_miso * miso_salt_ratio  # = 1.74g
+
+# ベースとなる液相の質量（塩を入れる前）
+M_base_liquid = M_water + M_miso  # = 500g
 
 # データをデータフレームとして読み込み
 df = pd.read_csv(io.StringIO(data_text.strip()), sep='\t')
 
 # ==========================================
-# 3. 計算処理
+# 3. 計算処理 (厳密な質量パーセント濃度)
 # ==========================================
-# 塩分濃度 C(%) の計算: (塩の質量 / 水の質量(480g)) * 100
-df['Salinity (%)'] = (df['C (g)'] / M_water) * 100
+# 分子: 加えた塩 C(g) + 味噌の初期塩分(1.74g)
+# 分母: 水(480g) + 味噌(20g) + 加えた塩 C(g)
+df['Salinity (%)'] = ((df['C (g)'] + initial_salt) / (M_base_liquid + df['C (g)'])) * 100
 
 # 温度補正済み導電率 σ_comp の計算
-# σ_comp = σ / (1 + 0.02 * (T - T_room))
 df['σ_comp'] = df['σ (mS/cm)'] / (1 + a_temp * (df['T (°C)'] - T_room))
 
 # ==========================================
@@ -70,10 +79,12 @@ a = slope
 b = intercept
 r_squared = r_value**2
 
-print("=== 味噌汁環境(Env 3) フィッティング結果 ===")
+print("=== Env 3 (厳密な濃度定義) フィッティング結果 ===")
+print(f"ベース液相質量: {M_base_liquid} g (水480g + 味噌20g)")
+print(f"味噌由来の初期塩分: {initial_salt:.2f} g")
 print(f"モデル式: σ_comp = a * C + b")
-print(f"a (感度 α_miso): {a:.4f}")
-print(f"b (初期塩分/ベースライン β_miso): {b:.4f}")
+print(f"a (感度 α_miso_tofu): {a:.4f}")
+print(f"b (絶対ベースライン β_miso_tofu): {b:.4f}")
 print(f"決定係数 R^2:    {r_squared:.4f}")
 
 # ==========================================
@@ -93,9 +104,9 @@ x_line = np.linspace(X.min(), X.max(), 100)
 y_line = a * x_line + b
 plt.plot(x_line, y_line, color='orange', linewidth=2, label=f'Fit: y={a:.2f}x + {b:.2f}')
 
-plt.xlabel('Salinity C(t) [%] (Base: 480g Water)')
+plt.xlabel('Strict Salinity Concentration [%]\n((Added Salt + 1.74g) / (500g + Added Salt))')
 plt.ylabel('Compensated Conductivity σ_comp [mS/cm]')
-plt.title('Calibration Curve for Miso Soup + tofu' + ' (Env 3)')
+plt.title('Calibration Curve for Miso Soup + Tofu (Strict Definition)')
 plt.legend()
 plt.grid(True)
 plt.show()

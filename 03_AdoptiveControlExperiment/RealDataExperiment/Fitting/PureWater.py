@@ -5,7 +5,7 @@ from scipy.stats import linregress
 import io
 
 # ==========================================
-# 1. データの入力エリア（ここに手打ち・コピペしてください）
+# 1. データの入力エリア
 # ==========================================
 data_text = """
 試行	C (g)	T (°C)	σ (mS/cm)
@@ -45,14 +45,19 @@ T_room = 24.6      # 室温 (°C)
 a_temp = 0.02      # 温度係数
 M_water = 600.0    # 水の質量 (g)
 
+# ベースとなる液相の質量（純水のみ）
+M_base_liquid = M_water  # = 600g
+initial_salt = 0.0       # 純水なので初期塩分はゼロ
+
 # データをデータフレームとして読み込み
 df = pd.read_csv(io.StringIO(data_text.strip()), sep='\t')
 
 # ==========================================
-# 3. 計算処理
+# 3. 計算処理 (厳密な質量パーセント濃度)
 # ==========================================
-# 塩分濃度 C(%) の計算: (塩の質量 / 水の質量) * 100
-df['Salinity (%)'] = (df['C (g)'] / M_water) * 100
+# 分子: 加えた塩 C(g)
+# 分母: 水(600g) + 加えた塩 C(g)
+df['Salinity (%)'] = (df['C (g)'] / (M_base_liquid + df['C (g)'])) * 100
 
 # 温度補正済み導電率 σ_comp の計算
 # σ_comp = σ / (1 + 0.02 * (T - T_room))
@@ -70,7 +75,7 @@ a = slope
 b = intercept
 r_squared = r_value**2
 
-print("=== フィッティング結果 ===")
+print("=== Env 1 (純水600g) 厳密な濃度定義 フィッティング結果 ===")
 print(f"モデル式: σ_comp = a * C + b")
 print(f"a (感度 α_water): {a:.4f}")
 print(f"b (切片 β_water): {b:.4f}")
@@ -93,9 +98,9 @@ x_line = np.linspace(X.min(), X.max(), 100)
 y_line = a * x_line + b
 plt.plot(x_line, y_line, color='orange', linewidth=2, label=f'Fit: y={a:.2f}x + {b:.2f}')
 
-plt.xlabel('Salinity C(t) [%]')
+plt.xlabel('Strict Salinity Concentration [%]\n(Added Salt / (600g + Added Salt))')
 plt.ylabel('Compensated Conductivity σ_comp [mS/cm]')
-plt.title('Calibration Curve for Pure Water (All Trials Pooled)')
+plt.title('Calibration Curve for Pure Water (Env 1, Strict Definition)')
 plt.legend()
 plt.grid(True)
 plt.show()
