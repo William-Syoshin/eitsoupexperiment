@@ -55,7 +55,7 @@ SALT_MAX_PER_STEP  = 1.0    # 1ステップの最大投入量 [g]
 ALPHA_NOMINAL = 6.63
 BETA_NOMINAL  = 0.69
 TEMP_COEFF    = 0.02
-T_BASE        = 25.0
+T_BASE        = 24.6
 
 KP = 0.1
 KI = 0.005
@@ -314,18 +314,51 @@ def main():
                         rate   = pid.compute(error, SALT_INTERVAL)
                         salt_g = rate * SALT_INTERVAL
 
+# Wrong STR 
+                    #elif CONTROL_MODE == "STR":
+                        #C_hat_rls       = total_salt / M_TOTAL * 100.0
+                        #alpha_h, beta_h = str_unit.estimate(sigma, C_hat_rls, T_avg)
+                        #kp, ki, kd      = str_unit.get_adjusted_gains(KP, KI, KD)
+                        #pid.Kp, pid.Ki, pid.Kd = kp, ki, kd
+                        #C_hat_adaptive  = estimate_concentration(sigma, T_avg,
+                                                                  #alpha_h, beta_h)
+                        #error  = C_TARGET - C_hat_adaptive
+                        #rate   = pid.compute(error, SALT_INTERVAL)
+                        #salt_g = rate * SALT_INTERVAL
+
                     elif CONTROL_MODE == "STR":
-                        C_hat_rls       = total_salt / M_TOTAL * 100.0
+                        # 1. ロボットの思い込み（600gの純水）ベースで、現在のパラメータを学習
+                        C_hat_rls = (total_salt / M_TOTAL) * 100.0
                         alpha_h, beta_h = str_unit.estimate(sigma, C_hat_rls, T_avg)
-                        kp, ki, kd      = str_unit.get_adjusted_gains(KP, KI, KD)
+                        
+                        # 2. 絶対的な味の基準（純水モデル）を使って、現在の真の等価濃度を評価
+                        # ※味噌が入っていれば、初期から sigma が高いので C_true_abs も高くなります
+                        C_true_abs = (sigma - BETA_NOMINAL) / ALPHA_NOMINAL
+                        
+                        # 3. 絶対的な目標値との誤差を計算
+                        error = C_TARGET - C_true_abs
+                        
+                        # 4. 適応ゲイン調整（現在のスープでの効き目 alpha_h を加味する）
+                        adaptive_ratio = ALPHA_NOMINAL / alpha_h if alpha_h > 0 else 1.0
+                        kp = KP * adaptive_ratio
+                        ki = KI * adaptive_ratio
+                        kd = KD * adaptive_ratio
                         pid.Kp, pid.Ki, pid.Kd = kp, ki, kd
-                        C_hat_adaptive  = estimate_concentration(sigma, T_avg,
-                                                                  alpha_h, beta_h)
-                        error  = C_TARGET - C_hat_adaptive
+                        
+                        # PIDで塩の投入量を計算
                         rate   = pid.compute(error, SALT_INTERVAL)
                         salt_g = rate * SALT_INTERVAL
+                        
+                        # グラフやログに記録するための濃度として、真の等価濃度をセット
+                        C_hat_adaptive = C_true_abs
 
-                    C_est = estimate_concentration(sigma, T_avg, alpha_h, beta_h)
+                    #C_est = estimate_concentration(sigma, T_avg, alpha_h, beta_h)
+                    # ＝＝＝ ★修正したのはこの4行だけです！ ＝＝＝
+                    if CONTROL_MODE == "STR":
+                        C_est = C_true_abs
+                    else:
+                        C_est = estimate_concentration(sigma, T_avg, alpha_h, beta_h)
+                    # ＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
 
                     # 塩投入
                     salt_g = min(salt_g, SALT_MAX_PER_STEP)
