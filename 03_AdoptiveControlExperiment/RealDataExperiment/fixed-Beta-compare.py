@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import linregress
 import io
 
 # ==========================================
@@ -114,41 +113,49 @@ a_temp = 0.02  # 温度係数
 miso_initial_salt = 20.0 * 0.087  # 1.74g
 
 def process_and_fit(data_text, m_base_liquid, initial_salt):
-    # sep=r'\s+' : タブでもスペースでも、連続する空白をすべて区切り文字として処理する
-    # skiprows=1 : 記号混じりのヘッダー行を無視する
-    # names=[...] : プログラム内で扱いやすい安全な列名を強制的に割り当てる
     df = pd.read_csv(io.StringIO(data_text.strip()), sep=r'\s+', skiprows=1, names=['Trial', 'C_g', 'T_C', 'Sigma'])
     df = df.dropna()
     
     # X軸: 厳密な塩分濃度 C(%) の計算
-    # 分子: 加えた塩 C_g + 初期塩分
-    # 分母: ベース液相 + 加えた塩 C_g
     x_data = ((df['C_g'] + initial_salt) / (m_base_liquid + df['C_g'])) * 100
     
     # Y軸: 温度補正済み導電率 σ_comp の計算
     y_data = df['Sigma'] / (1 + a_temp * (df['T_C'] - T_room))
     
-    # 線形回帰で a (傾き), b (切片), r_value (相関係数) を計算
-    a, b, r_value, _, _ = linregress(x_data, y_data)
-    r_squared = r_value**2
+    # ─── ★ここを修正：実際のスタート点 (x_zero, y_zero) を必ず通る直線フィッティング ───
+    # 塩0g（C_g == 0）のときの、実際の「平均濃度」と「平均導電率」を取得
+    mask_zero = df['C_g'] == 0
+    x_zero = x_data[mask_zero].mean()
+    y_zero = y_data[mask_zero].mean()
     
-    print(f"--- fitting results ---")
+    # (x_zero, y_zero) からの相対的な距離（ズレ）を計算
+    x_diff = x_data - x_zero
+    y_diff = y_data - y_zero
+    
+    # 実際のスタート点を通る条件での、最適な傾き a を逆算
+    a = np.sum(x_diff * y_diff) / np.sum(x_diff**2)
+    
+    # Y軸の切片 b (X=0 のときの値) を物理モデルに合わせて逆算
+    b = y_zero - a * x_zero
+    # ─────────────────────────────────────────────────────────────────────────────────
+    
+    # 3. 決定係数 R^2 の算出
+    y_pred = a * x_data + b
+    ss_res = np.sum((y_data - y_pred) ** 2)
+    ss_tot = np.sum((y_data - y_data.mean()) ** 2)
+    r_squared = 1 - (ss_res / ss_tot)
+    
+    print(f"--- fitting results (Corrected Fixed Point) ---")
     print(f"Liquid Mass: {m_base_liquid}g, Initial Salt: {initial_salt}g")
     print(f"a (Sensitivity) = {a:.4f}, b (Baseline) = {b:.4f}, R^2 = {r_squared:.4f}\n")
     
     return x_data.values, y_data.values, a, b, r_squared
 
-# ↓↓↓ おそらくここが消えてしまっていました！ ↓↓↓
-# 3つの環境のデータを処理 (物理モデルに基づいた質量定義)
-# Env 1: 純水 (ベース液相 600g, 初期塩分 0g)
+
+# 3つの環境のデータを処理
 x1, y1, a1, b1, r2_1 = process_and_fit(data_env1, m_base_liquid=600.0, initial_salt=0.0)
-
-# Env 2: 水580g + 味噌20g (ベース液相 600g, 初期塩分 1.74g)
 x2, y2, a2, b2, r2_2 = process_and_fit(data_env2, m_base_liquid=600.0, initial_salt=miso_initial_salt)
-
-# Env 3: 水480g + 味噌20g + 豆腐100g (豆腐は固形物として除外し、ベース液相 500g, 初期塩分 1.74g)
 x3, y3, a3, b3, r2_3 = process_and_fit(data_env3, m_base_liquid=500.0, initial_salt=miso_initial_salt)
-# ↑↑↑ ここまで ↑↑↑
 
 
 # ==========================================
