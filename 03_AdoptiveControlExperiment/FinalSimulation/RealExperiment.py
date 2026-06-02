@@ -332,8 +332,13 @@ def main():
                         alpha_h, beta_h = str_unit.estimate(sigma, C_hat_rls, T_avg)
                         
                         # 2. 絶対的な味の基準（純水モデル）を使って、現在の真の等価濃度を評価
-                        # ※味噌が入っていれば、初期から sigma が高いので C_true_abs も高くなります
-                        C_true_abs = (sigma - BETA_NOMINAL) / ALPHA_NOMINAL
+                        # 【修正】まず現在の温度(T_avg)を使って、sigmaを24.6℃相当に補正する
+                        temp_factor = 1.0 + TEMP_COEFF * (T_avg - T_BASE)
+                        if temp_factor == 0: temp_factor = 1.0 # ゼロ割防止
+                        sigma_comp = sigma / temp_factor
+                        
+                        # 【修正】補正済みの導電率(sigma_comp)を使って濃度を計算する
+                        C_true_abs = (sigma_comp - BETA_NOMINAL) / ALPHA_NOMINAL
                         
                         # 3. 絶対的な目標値との誤差を計算
                         error = C_TARGET - C_true_abs
@@ -351,6 +356,12 @@ def main():
                         
                         # グラフやログに記録するための濃度として、真の等価濃度をセット
                         C_hat_adaptive = C_true_abs
+
+                    # ＝＝＝ ダッシュボード・グラフ用の表示変数の切り替え ＝＝＝
+                    if CONTROL_MODE == "STR":
+                        C_est = C_true_abs
+                    else:
+                        C_est = estimate_concentration(sigma, T_avg, alpha_h, beta_h)
 
                     #C_est = estimate_concentration(sigma, T_avg, alpha_h, beta_h)
                     # ＝＝＝ ★修正したのはこの4行だけです！ ＝＝＝
