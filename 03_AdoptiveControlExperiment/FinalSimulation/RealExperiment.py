@@ -52,8 +52,8 @@ M_TOTAL            = 600.0  # スープ総質量 [g]
 SALT_MAX_PER_STEP  = 1.0    # 1ステップの最大投入量 [g]
 
 # 純水キャリブレーション値（市販センサー mS/cm ベース）
-ALPHA_NOMINAL = 6.63
-BETA_NOMINAL  = 0.69
+ALPHA_NOMINAL = 8.1013
+BETA_NOMINAL  = 0.1550
 TEMP_COEFF    = 0.02
 T_BASE        = 24.6
 
@@ -223,7 +223,7 @@ def main():
 
     str_unit = STRController(
         alpha_init=ALPHA_NOMINAL, beta_init=BETA_NOMINAL,
-        a=TEMP_COEFF, T_base=T_BASE, lam=0.98
+        a=TEMP_COEFF, T_base=T_BASE, lam=1.0
     )
     pid = PIDController(Kp=KP, Ki=KI, Kd=KD,
                         output_min=0.0,
@@ -327,49 +327,30 @@ def main():
                         #salt_g = rate * SALT_INTERVAL
 
                     elif CONTROL_MODE == "STR":
-                        # 1. ロボットの思い込み（600gの純水）ベースで、現在のパラメータを学習
+                        # RLSで現在のスープのα̂β̂を推定（ゲイン調整に使う）
                         C_hat_rls = (total_salt / M_TOTAL) * 100.0
                         alpha_h, beta_h = str_unit.estimate(sigma, C_hat_rls, T_avg)
-                        
-                        # 2. 絶対的な味の基準（純水モデル）を使って、現在の真の等価濃度を評価
-                        # 【修正】まず現在の温度(T_avg)を使って、sigmaを24.6℃相当に補正する
+
+                        # 純水モデルで「液体全体の等価濃度」を計算して誤差を求める
                         temp_factor = 1.0 + TEMP_COEFF * (T_avg - T_BASE)
-                        if temp_factor == 0: temp_factor = 1.0 # ゼロ割防止
-                        sigma_comp = sigma / temp_factor
-                        
-                        # 【修正】補正済みの導電率(sigma_comp)を使って濃度を計算する
-                        C_true_abs = (sigma_comp - BETA_NOMINAL) / ALPHA_NOMINAL
-                        
-                        # 3. 絶対的な目標値との誤差を計算
+                        if temp_factor == 0:
+                            temp_factor = 1.0
+                        sigma_comp  = sigma / temp_factor
+                        C_true_abs  = (sigma_comp - BETA_NOMINAL) / ALPHA_NOMINAL
+
                         error = C_TARGET - C_true_abs
-                        
-                        # 4. 適応ゲイン調整（現在のスープでの効き目 alpha_h を加味する）
-                        adaptive_ratio = ALPHA_NOMINAL / alpha_h if alpha_h > 0 else 1.0
-                        kp = KP * adaptive_ratio
-                        ki = KI * adaptive_ratio
-                        kd = KD * adaptive_ratio
-                        pid.Kp, pid.Ki, pid.Kd = kp, ki, kd
-                        
-                        # PIDで塩の投入量を計算
+
+                        # 適応ゲイン調整（α̂ に基づく、最大3倍に制限）
+                        adaptive_ratio = ALPHA_NOMINAL / max(ALPHA_NOMINAL / 3.0, alpha_h)
+                        adaptive_ratio = min(adaptive_ratio, 3.0)
+                        pid.Kp, pid.Ki, pid.Kd = KP * adaptive_ratio, KI * adaptive_ratio, KD * adaptive_ratio
+
                         rate   = pid.compute(error, SALT_INTERVAL)
                         salt_g = rate * SALT_INTERVAL
-                        
-                        # グラフやログに記録するための濃度として、真の等価濃度をセット
-                        C_hat_adaptive = C_true_abs
 
-                    # ＝＝＝ ダッシュボード・グラフ用の表示変数の切り替え ＝＝＝
-                    if CONTROL_MODE == "STR":
-                        C_est = C_true_abs
-                    else:
-                        C_est = estimate_concentration(sigma, T_avg, alpha_h, beta_h)
-
-                    #C_est = estimate_concentration(sigma, T_avg, alpha_h, beta_h)
-                    # ＝＝＝ ★修正したのはこの4行だけです！ ＝＝＝
-                    if CONTROL_MODE == "STR":
-                        C_est = C_true_abs
-                    else:
-                        C_est = estimate_concentration(sigma, T_avg, alpha_h, beta_h)
-                    # ＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+                    # 表示・ログ用濃度：全モードで純水モデルによる絶対等価濃度を使う
+                    temp_factor_disp = 1.0 + TEMP_COEFF * (T_avg - T_BASE) or 1.0
+                    C_est = (sigma / temp_factor_disp - BETA_NOMINAL) / ALPHA_NOMINAL
 
                     # 塩投入
                     salt_g = min(salt_g, SALT_MAX_PER_STEP)

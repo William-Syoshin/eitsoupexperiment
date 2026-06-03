@@ -21,18 +21,12 @@ from collections import deque
 CALIB_SLOPE     = 0.3291   # [g/s]
 CALIB_INTERCEPT = 0.0227   # [g]
 
-# ── モーター出力補正係数 ──
-# 実測: キャリブレーション通りの時間で動かすと実際には 0.65 倍しか出ない
-# そのため計算した稼働時間を 1/0.65 倍に延ばして補正する
-MOTOR_CORRECTION = 1.0 / 0.65
-
-
 def grams_to_ms(salt_g: float) -> int:
     """投入したい塩の量[g]をモーター稼働時間[ms]に変換する"""
     if salt_g <= CALIB_INTERCEPT:
         return 0
     duration_s = (salt_g - CALIB_INTERCEPT) / CALIB_SLOPE
-    return int(duration_s * 1000 * MOTOR_CORRECTION)
+    return int(duration_s * 1000)
 
 
 class ArduinoInterface:
