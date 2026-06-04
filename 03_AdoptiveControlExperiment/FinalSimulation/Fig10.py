@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 # --- 各スープの真の物理パラメータ ---
 # 導電率の式: sigma = alpha * C + beta
 soups = {
-    "Water (PID's Belief)": {"alpha": 11.9320, "beta": 0.3410,  "color": "blue",   "ls": "--"},
-    "Potato Soup":          {"alpha": 8.5000,  "beta": 1.5000,  "color": "green",  "ls": "-"},
-    "Miso Tofu Soup":       {"alpha": 10.8500, "beta": 5.1200,  "color": "orange", "ls": "-"}
+    "Water (PID's Belief)": {"alpha": 8.1013, "beta": 0.155,  "color": "blue",   "ls": "--"},
+    "miso Soup":          {"alpha": 9.1819,  "beta": 1.1606,  "color": "green",  "ls": "-"},
+    "Miso Tofu Soup":       {"alpha": 8.5359, "beta": 1.1373,  "color": "orange", "ls": "-"}
 }
 
 # 塩分濃度 0.0% 〜 1.5% の範囲

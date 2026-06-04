@@ -6,125 +6,130 @@ from Controls.OpenLoop import OpenLoopController
 from Controls.AdaptiveControl import STRController
 
 def run_simulation(
-    soup_type="potato",       # スープの種類
+    soup_type="miso",       
     control_mode="PID",
-    salt_interval=30.0,
-    salt_limit=1.0,
+    salt_interval=30.0,    
+    salt_limit=0.5,        
     temp_interval=1.0,
     kp_c=0.1, ki_c=0.005, kd_c=0.0,
-    kp_t=0.05, ki_t=0.0005, kd_t=2.0
+    kp_t=0.05, ki_t=0.0005, kd_t=0.0
 ):
-    # ── 基本設定 ──
     DT = 1.0; SIM_TIME = 600.0; STEPS = int(SIM_TIME / DT)
     time = np.arange(STEPS) * DT
     T_REF = 50.0; C_REF = 1.0
 
-    # 【ロボットの予習知識】水のみのフィッティング値
-    ALPHA_NOMINAL = 11.9320
-    BETA_NOMINAL  = 0.3410
+    # 【ロボットの予習知識】純水のことしか知らない
+    ALPHA_NOMINAL = 8.1013
+    BETA_NOMINAL  = 0.1550
     TEMP_COEFF    = 0.02
-    T_BASE        = 25.0
+    T_BASE        = 24.6
+    KNOWN_BASE_MASS = 600.0 # 💡 ロボットは常に600gだと思い込んでいる
 
-    # プラント（現実の鍋）の生成
-    plant = SoupPlant(soup_type=soup_type, T_w_init=20.0, T_s_init=20.0, T_room=20.0)
+    plant = SoupPlant(soup_type=soup_type, T_w_init=50.0, T_s_init=50.0, T_room=24.6)
     rate_limit = salt_limit / salt_interval
 
-    # 💡【修正ポイント】実行ごとに毎回完全に独立した「新品」のコントローラーを生成する
     if control_mode == "OpenLoop":
         conc_controller = OpenLoopController(fixed_rate=0.0)
     else:
-        # PIDでもSTRでも、最初は「初期ゲイン（kp_c, ki_c, kd_c）」を持った新品のPIDを用意する
         conc_controller = PIDController(Kp=kp_c, Ki=ki_c, Kd=kd_c, output_min=0.0, output_max=rate_limit)
 
-    # STRの準備
-    str_unit = None
-    if control_mode == "STR":
-        str_unit = STRController(alpha_init=ALPHA_NOMINAL, beta_init=BETA_NOMINAL, a=TEMP_COEFF, T_base=T_BASE, lam=0.98)
-
-    # 温度PID
     pid_temp = PIDController(Kp=kp_t, Ki=ki_t, Kd=kd_t, output_min=0.0)
 
-    # ログ初期化
+    str_unit = None
+    if control_mode == "STR":
+        str_unit = STRController(alpha_init=ALPHA_NOMINAL, beta_init=BETA_NOMINAL)
+
     logs = {key: np.zeros(STEPS) for key in ["Tw", "C", "sigma", "Qin", "salt_cum", "alpha_hat", "beta_hat"]}
+    
+    # 💡 グラフ描画用：ロボットが自分自身で追加した塩の累計
+    robot_added_salt_total = 0.0
 
     for i in range(STEPS):
-        # --- 1. 温度制御 ---
         if i % temp_interval == 0:
             e_T = T_REF - plant.T_w
             Q_in = max(0.0, pid_temp.compute(e_T, temp_interval))
 
-        # --- 2. 濃度制御 ---
-        # 💡 「and i > 0」を追加して、0秒目（i=0）は何もせずスルーさせる
         if i % salt_interval == 0 and i > 0:
-            temp_comp = (1.0 + TEMP_COEFF * (plant.T_w - T_BASE))
+            temp_comp = 1.0 + TEMP_COEFF * (plant.T_w - T_BASE)
+            if temp_comp == 0: temp_comp = 1.0
+            sigma_comp = plant.conductivity / temp_comp
             
+            # 💡 ロボットは「自分が追加した塩」しか知らない
+            X_robot = (robot_added_salt_total / KNOWN_BASE_MASS) * 100.0
+
             if control_mode == "OpenLoop":
-                # 💡 OpenLoopの投入タイミングも「最初(0秒)」から「1回目のインターバル(30秒)」に変更
                 salt_added = 6.0 if i == salt_interval else 0.0
                 
             elif control_mode == "PID":
-                C_hat_fixed = (plant.conductivity / temp_comp - BETA_NOMINAL) / ALPHA_NOMINAL
+                # 【PID】純水の知識で濃度を逆算（味噌に騙されて早めに止まる）
+                C_hat_fixed = (sigma_comp - BETA_NOMINAL) / ALPHA_NOMINAL
                 e_C = C_REF - C_hat_fixed
                 salt_added = conc_controller.compute(e_C, salt_interval) * salt_interval
                 
             elif control_mode == "STR":
-                alpha_h, beta_h = str_unit.estimate(plant.conductivity, plant.concentration, plant.T_w)
-                kp_a, ki_a, kd_a = str_unit.get_adjusted_gains(kp_c, ki_c, kd_c)
+                # 1. 未知の α と β を学習
+                alpha_h, beta_h = str_unit.estimate(sigma_comp, X_robot)
                 
+                kp_a, ki_a, kd_a = str_unit.get_adjusted_gains(kp_c, ki_c, kd_c)
                 conc_controller.Kp = kp_a
                 conc_controller.Ki = ki_a
                 conc_controller.Kd = kd_a
                 
-                C_hat_adaptive = (plant.conductivity / temp_comp - beta_h) / alpha_h
-                e_C = C_REF - C_hat_adaptive
-                salt_added = conc_controller.compute(e_C, salt_interval) * salt_interval
+                # 💡 2. 【提案手法：適応的初期値推測】
+                # 「学習したベースライン(β)が水(0.155)より高いということは、最初から塩が入っているな？」と推理する
+                C_init_est = max(0.0, (beta_h - BETA_NOMINAL) / alpha_h)
+                
+                # 1.0%になるために、あとどれだけ追加すればいいかを計算
+                C_added_target = max(0.0, C_REF - C_init_est)
+                
+                # 目標導電率を算出
+                sigma_target = alpha_h * C_added_target + beta_h
+                
+                # センサ値の差分（エラー）を計算
+                e_C_sensor_based = (sigma_target - sigma_comp) / alpha_h
+                salt_added = conc_controller.compute(e_C_sensor_based, salt_interval) * salt_interval
         else:
             salt_added = 0.0
        
-        plant.step(Q_in=Q_in, salt_added=salt_added, dt=DT)
+        plant.step(Q_in=Q_in, salt_added_this_step=salt_added, dt=DT)
+        robot_added_salt_total += salt_added
         
         # 記録
         logs["Tw"][i] = plant.T_w
         logs["C"][i] = plant.concentration
         logs["sigma"][i] = plant.conductivity
         logs["Qin"][i] = Q_in
-        logs["salt_cum"][i] = plant.salt_mass
-        if str_unit:
-            logs["alpha_hat"][i] = str_unit.theta[0, 0] if hasattr(str_unit, 'theta') else alpha_h
-            logs["beta_hat"][i] = str_unit.theta[1, 0] if hasattr(str_unit, 'theta') else beta_h
+        # 💡 ここを直しました！グラフは「ロボットが入れた塩」だけが0gからプロットされます
+        logs["salt_cum"][i] = robot_added_salt_total 
+        if control_mode == "STR":
+            logs["alpha_hat"][i] = str_unit.theta[0, 0]
+            logs["beta_hat"][i]  = str_unit.theta[1, 0]
 
     return time, logs
 
 
 # ============================================================
-# ⚙️ 描画処理：3つのスープ×6パネル ＋ 🛠️【修正版】定常エラー評価グラフ
+# ⚙️ 描画処理：3つのスープ×6パネル ＋ まとめグラフ
 # ============================================================
 colors = {'OL': '#00FF00', 'PID': '#0000FF', 'STR': '#FF8C00'}
-target_soups = ["water", "potato", "miso_tofu"]
+target_soups = ["water", "miso", "miso_tofu"] # 💡 potato を miso に変更
 
-# 💡 実行するたびに確実にリストをリセット
 robustness_errors = {'OL': [], 'PID': [], 'STR': []}
-
 C_REF = 1.0
-EVAL_START_TIME = 500.0  # 完全に安定した最後の100秒のみを評価
+EVAL_START_TIME = 500.0  
 
-# スープごとにループを回して、シミュレーション・エラー計算・6パネル描画を全てここで済ませる
 for soup in target_soups:
     print(f"Simulating {soup}...")
     
-    # --- シミュレーション実行 ---
     t, logs_open = run_simulation(soup_type=soup, control_mode="OpenLoop", kp_c=0.1, ki_c=0.005, kd_c=0.0)
     _, logs_pid  = run_simulation(soup_type=soup, control_mode="PID",      kp_c=0.1, ki_c=0.005, kd_c=0.0)
     _, logs_str  = run_simulation(soup_type=soup, control_mode="STR",      kp_c=0.1, ki_c=0.005, kd_c=0.0)
     
-    # 💡 相対誤差（Relative Error [%]）の平均を算出してリストに追加
-    # 計算式： (|実際の濃度 - 目標濃度| / 目標濃度) * 100
     idx = (t >= EVAL_START_TIME)
     robustness_errors['OL'].append(np.mean(np.abs(logs_open["C"][idx] - C_REF)) / C_REF * 100.0)
     robustness_errors['PID'].append(np.mean(np.abs(logs_pid["C"][idx] - C_REF)) / C_REF * 100.0)
     robustness_errors['STR'].append(np.mean(np.abs(logs_str["C"][idx] - C_REF)) / C_REF * 100.0)
     
-    # --- 6パネルグラフの描画 ---
     fig, axes = plt.subplots(3, 2, figsize=(13, 9), num=f"Soup Profile: {soup.upper()}")
     fig.suptitle(f"Control Performance Analysis - [{soup.upper()}]", fontsize=14, fontweight="bold")
 
@@ -175,8 +180,9 @@ for soup in target_soups:
 
     # ⑥ STR Parameter Estimation
     ax = axes[2, 1]
-    ax.plot(t, logs_str["alpha_hat"], color="#8B0000", lw=2, label=r"Estimated $\alpha$")
-    ax.plot(t, logs_str["beta_hat"],  color="#FFD700", lw=2, label=r"Estimated $\beta$")
+    if "alpha_hat" in logs_str and np.any(logs_str["alpha_hat"]):
+        ax.plot(t, logs_str["alpha_hat"], color="#8B0000", lw=2, label=r"Estimated $\alpha$")
+        ax.plot(t, logs_str["beta_hat"],  color="#FFD700", lw=2, label=r"Estimated $\beta$")
     ax.set(xlabel="Time [s]", title="⑥ STR Parameter Identification")
     ax.legend(loc='center right')
     ax.grid(alpha=0.3)
@@ -184,27 +190,24 @@ for soup in target_soups:
     plt.tight_layout()
 
 # ============================================================
-# 💡 まとめグラフ描画部分（最後に1回だけ実行）
+# 💡 まとめグラフ描画
 # ============================================================
 fig_err, ax_err = plt.subplots(figsize=(9, 6), num="Controller Robustness Summary")
-soups_labels = ["Water", "Potato Soup", "Miso Tofu Soup"]
+soups_labels = ["Water", "Miso Soup", "Miso + Tofu"]
 x_indices = np.arange(len(soups_labels))
 
-# 各コントローラーのエラーの軌跡をプロット
 ax_err.plot(x_indices, robustness_errors['OL'],  marker='o', markersize=10, linestyle='-', linewidth=2.5, color=colors['OL'], alpha=0.5, label='Open-Loop')
 ax_err.plot(x_indices, robustness_errors['PID'], marker='s', markersize=10, linestyle='-', linewidth=2.5, color=colors['PID'], alpha=0.8, label='PID Control')
 ax_err.plot(x_indices, robustness_errors['STR'], marker='*', markersize=14, linestyle='-', linewidth=2.5, color=colors['STR'], label='STR (Adaptive)')
 
-# グラフの装飾
 ax_err.set_title("Controller Robustness against Soup Complexity", fontsize=15, fontweight='bold', pad=15)
 ax_err.set_ylabel("Steady-State Relative Error [%]\n(% Deviation from Target Salinity)", fontsize=12)
 ax_err.set_xticks(x_indices)
 ax_err.set_xticklabels(soups_labels, fontsize=11)
-ax_err.set_ylim(0, 50)  # 誤差100%が収まるように120%へ拡張
+ax_err.set_ylim(0, 50)  
 ax_err.grid(axis='y', linestyle='--', alpha=0.4)
 ax_err.legend(fontsize=12, loc='upper left')
 
-# X軸の下に矢印と文字を追加
 ax_err.annotate('', xy=(0.95, -0.15), xytext=(0.05, -0.15), xycoords='axes fraction', textcoords='axes fraction',
                 arrowprops=dict(arrowstyle="->", color='black', lw=2))
 ax_err.text(0.5, -0.22, "Increasing Soup Complexity $\\rightarrow$", 
