@@ -325,11 +325,18 @@ def main():
                     if temp_factor == 0:
                         temp_factor = 1.0
                     sigma_comp = sigma / temp_factor
-                    C_true_abs = (sigma_comp - BETA_NOMINAL) / ALPHA_NOMINAL
+
+                    # ステップ1（塩未投入）はα推定未確定のため固定値を使う
+                    # ステップ2以降は推定したα_h・β_hで誤差を計算する
+                    alpha_safe = max(ALPHA_NOMINAL / 3.0, min(alpha_h, ALPHA_NOMINAL * 3.0))
+                    if total_salt < 0.01:
+                        C_true_abs = (sigma_comp - BETA_NOMINAL) / ALPHA_NOMINAL
+                    else:
+                        C_true_abs = (sigma_comp - beta_h) / alpha_safe
 
                     error = C_TARGET - C_true_abs
 
-                    adaptive_ratio = ALPHA_NOMINAL / max(ALPHA_NOMINAL / 3.0, alpha_h)
+                    adaptive_ratio = ALPHA_NOMINAL / alpha_safe
                     adaptive_ratio = min(adaptive_ratio, 3.0)
                     pid.Kp, pid.Ki, pid.Kd = (KP * adaptive_ratio,
                                               KI * adaptive_ratio,
@@ -338,9 +345,14 @@ def main():
                     rate   = pid.compute(error, SALT_INTERVAL)
                     salt_g = rate * SALT_INTERVAL
 
-                # 表示・ログ用濃度
+                # 表示・ログ用濃度：STRは推定値、それ以外は固定値
                 temp_factor_disp = 1.0 + TEMP_COEFF * (T_rec - T_BASE) or 1.0
-                C_est = (sigma / temp_factor_disp - BETA_NOMINAL) / ALPHA_NOMINAL
+                sigma_comp_disp  = sigma / temp_factor_disp
+                if CONTROL_MODE == "STR" and total_salt >= 0.01:
+                    alpha_safe_disp = max(ALPHA_NOMINAL / 3.0, min(alpha_h, ALPHA_NOMINAL * 3.0))
+                    C_est = (sigma_comp_disp - beta_h) / alpha_safe_disp
+                else:
+                    C_est = (sigma_comp_disp - BETA_NOMINAL) / ALPHA_NOMINAL
 
                 # 塩投入
                 salt_g = min(salt_g, SALT_MAX_PER_STEP)
