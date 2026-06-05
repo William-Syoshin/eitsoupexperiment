@@ -61,7 +61,6 @@ def run_simulation(
                 salt_added = 6.0 if i == salt_interval else 0.0
                 
             elif control_mode == "PID":
-                # 【PID】純水の知識で濃度を逆算（味噌に騙されて早めに止まる）
                 C_hat_fixed = (sigma_comp - BETA_NOMINAL) / ALPHA_NOMINAL
                 e_C = C_REF - C_hat_fixed
                 salt_added = conc_controller.compute(e_C, salt_interval) * salt_interval
@@ -70,24 +69,27 @@ def run_simulation(
                 # 1. 未知の α と β を学習
                 alpha_h, beta_h = str_unit.estimate(sigma_comp, X_robot)
                 
-                kp_a, ki_a, kd_a = str_unit.get_adjusted_gains(kp_c, ki_c, kd_c)
-                conc_controller.Kp = kp_a
-                conc_controller.Ki = ki_a
-                conc_controller.Kd = kd_a
+                # 安全な傾きに制限
+                alpha_safe = max(ALPHA_NOMINAL / 3.0, min(alpha_h, ALPHA_NOMINAL * 3.0))
                 
-                # 💡 2. 【提案手法：適応的初期値推測】
-                # 「学習したベースライン(β)が水(0.155)より高いということは、最初から塩が入っているな？」と推理する
-                C_init_est = max(0.0, (beta_h - BETA_NOMINAL) / alpha_h)
+                # ゲインの適応調整
+                adaptive_ratio = ALPHA_NOMINAL / alpha_safe
+                adaptive_ratio = min(adaptive_ratio, 3.0)
+                conc_controller.Kp = kp_c * adaptive_ratio
+                conc_controller.Ki = ki_c * adaptive_ratio
+                conc_controller.Kd = kd_c * adaptive_ratio
                 
-                # 1.0%になるために、あとどれだけ追加すればいいかを計算
-                C_added_target = max(0.0, C_REF - C_init_est)
+                # 2. 【提案手法：適応的初期値推測】
+                # ステップ1は純水の知識で安全にスタート、それ以降は推理ロジックを使用
+                if robot_added_salt_total < 0.01:
+                    C_true_abs = (sigma_comp - BETA_NOMINAL) / ALPHA_NOMINAL
+                    error = C_REF - C_true_abs
+                else:
+                    # 推理ロジック：純水のベース(0.155)を引いて、現在の味噌特性(alpha_safe)で評価
+                    C_true_abs = (sigma_comp - BETA_NOMINAL) / alpha_safe
+                    error = C_REF - C_true_abs
                 
-                # 目標導電率を算出
-                sigma_target = alpha_h * C_added_target + beta_h
-                
-                # センサ値の差分（エラー）を計算
-                e_C_sensor_based = (sigma_target - sigma_comp) / alpha_h
-                salt_added = conc_controller.compute(e_C_sensor_based, salt_interval) * salt_interval
+                salt_added = conc_controller.compute(error, salt_interval) * salt_interval
         else:
             salt_added = 0.0
        
