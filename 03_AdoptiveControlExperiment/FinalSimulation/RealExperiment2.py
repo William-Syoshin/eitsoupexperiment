@@ -65,7 +65,7 @@ KP = 0.1
 KI = 0.005
 KD = 0.0
 
-CONTROL_MODE = "PID"   # "STR" / "PID" / "OpenLoop"
+CONTROL_MODE = "STR"   # "STR" / "PID" / "OpenLoop"
 
 
 # ─────────────────────────────────────────
@@ -242,9 +242,9 @@ def main():
     plant.connect()
     time.sleep(3.0)
 
+    # 【修正①】a / T_base 引数を削除（STRController は alpha_init, beta_init, lam のみ受け取る）
     str_unit = STRController(
-        alpha_init=ALPHA_NOMINAL, beta_init=BETA_NOMINAL,
-        a=TEMP_COEFF, T_base=T_BASE, lam=1.0
+        alpha_init=ALPHA_NOMINAL, beta_init=BETA_NOMINAL, lam=1.0
     )
     pid = PIDController(Kp=KP, Ki=KI, Kd=KD,
                         output_min=0.0,
@@ -295,6 +295,11 @@ def main():
                 # リスナー停止（ターミナル設定を復元してから console.input へ）
                 skip_event.set()
                 listener.join(timeout=1.0)
+                # cbreak 中にバッファに溜まった余分な文字を捨てる
+                try:
+                    termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+                except Exception:
+                    pass
 
                 # ── EC入力（プログラム停止）・入力完了の瞬間のT_wを記録 ──
                 live.stop()
@@ -318,13 +323,15 @@ def main():
                     salt_g = rate * SALT_INTERVAL
 
                 elif CONTROL_MODE == "STR":
-                    C_hat_rls       = (total_salt / M_TOTAL) * 100.0
-                    alpha_h, beta_h = str_unit.estimate(sigma, C_hat_rls, T_rec)
-
+                    # 【修正②】先に温度補正してから、補正済み sigma_comp を estimate に渡す
+                    #           estimate は (sigma_comp, X_total) の2引数
                     temp_factor = 1.0 + TEMP_COEFF * (T_rec - T_BASE)
                     if temp_factor == 0:
                         temp_factor = 1.0
                     sigma_comp = sigma / temp_factor
+
+                    C_hat_rls       = (total_salt / M_TOTAL) * 100.0
+                    alpha_h, beta_h = str_unit.estimate(sigma_comp, C_hat_rls)
 
                     # ステップ1（塩未投入）はα推定未確定のため固定値を使う
                     # ステップ2以降は推定したα_h・β_hで誤差を計算する
@@ -332,7 +339,7 @@ def main():
                     if total_salt < 0.01:
                         C_true_abs = (sigma_comp - BETA_NOMINAL) / ALPHA_NOMINAL
                     else:
-                        C_true_abs = (sigma_comp - beta_h) / alpha_safe
+                        C_true_abs = (sigma_comp - BETA_NOMINAL) / alpha_safe
 
                     error = C_TARGET - C_true_abs
 
