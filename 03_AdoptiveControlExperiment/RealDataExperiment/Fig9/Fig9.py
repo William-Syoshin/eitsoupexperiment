@@ -148,7 +148,7 @@ fig, axes = plt.subplots(1, 3, figsize=(fig_width_in, fig_height_in))
 plot_configs = [
     {"title": "Water",     "ol": water_ol, "pid": water_pid, "str": water_str},
     {"title": "Miso Soup", "ol": miso_ol,  "pid": miso_pid,  "str": miso_str},
-    {"title": "Miso Soup\n+Tofu", "ol": tofu_ol,  "pid": tofu_pid,  "str": tofu_str}
+    {"title": "Miso Soup +Tofu", "ol": tofu_ol,  "pid": tofu_pid,  "str": tofu_str}
 ]
 
 colors = {'OL': '#4d4d4d', 'PID': '#1f77b4', 'STR': "#ce0000"}

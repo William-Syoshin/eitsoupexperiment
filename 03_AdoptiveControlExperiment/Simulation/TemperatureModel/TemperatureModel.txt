@@ -1,0 +1,23 @@
+===================================================
+=== Step 1: Basic Thermal Dynamics (Water Only) ===
+===================================================
+Q_in     (Heating Power MV)        = 0.2932
+k_env    (Heat Loss to Ambient)     = 0.0096
+★ R^2   (Water Only Model Fit)     = 0.9803
+
+===================================================
+=== Step 2: Potato Dynamics (Water + Potato)    ===
+===================================================
+Capacity Ratio (Liquid / Solid)    = 5.81
+k_loss   (Heat transfer: W -> P)   = 0.0017
+k_absorb (Heat absorb: Potato)     = 0.0101
+★ R^2   (Potato Model Fit)         = 0.9272
+
+===================================================
+=== Step 3: Tofu Dynamics (Miso Soup + Tofu)    ===
+===================================================
+Capacity Ratio (Liquid / Solid)    = 5.21
+k_loss   (Heat transfer: L -> T)   = 0.0033
+k_absorb (Heat absorb: Tofu)       = 0.0171
+★ R^2   (Miso Tofu Model Fit)      = 0.8186
+===================================================
