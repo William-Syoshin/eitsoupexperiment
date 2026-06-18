@@ -21,7 +21,7 @@ plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman']
 plt.rcParams['mathtext.fontset'] = 'stix' 
 plt.rcParams['font.size'] = 14
-plt.rcParams['legend.fontsize'] = 12
+plt.rcParams['legend.fontsize'] = 11
 
 fig, ax = plt.subplots(figsize=(fig_width_inch, fig_height_inch))
 
@@ -97,7 +97,7 @@ ax.text(0.5, -0.22, 'Increasing Soup Complexity', transform=ax.transAxes,
 legend_elements = [
     Line2D([0], [0], color=color_ol, marker='o', linestyle='-', lw=lw_main, markersize=ms, label='Open-Loop'),
     Line2D([0], [0], color=color_pid, marker='s', linestyle='-', lw=lw_main, markersize=ms, label='PID Control'),
-    Line2D([0], [0], color=color_str, marker='D', linestyle='-', lw=lw_main, markersize=ms+2, label='STR (Adaptive)')
+    Line2D([0], [0], color=color_str, marker='D', linestyle='-', lw=lw_main, markersize=ms+2, label='Adaptive Tasting Control')
 ]
 ax.legend(handles=legend_elements, loc='upper left', frameon=True, edgecolor='black', framealpha=1.0)
 

@@ -1,16 +1,18 @@
+# -*- coding: utf-8 -*-
 import pandas as pd
 import matplotlib.pyplot as plt
 
 # ==========================================
 # 1. データの準備
 # ==========================================
-# 💡 修正1：列名に改行（\n）を入れて、横幅を節約する
+# 💡 「Miso」の列に塩分濃度8.9%を追記し、初期塩分の数値を小数点以下3桁で更新しました
 data = {
     "Soup Type": ["Pure Water", "Miso Soup", "Miso Soup\n+Tofu"],
     "Water\n(g)": [600, 580, 480],
     "Miso\n(g)": [0, 20, 20],
     "Tofu\n(g)": [0, 0, 100],
-    "Total\n(g)": [600, 600, 600]
+    "Total\n(g)": [600, 600, 600],
+    "Init. Salt\n(%)": ["0.000", "0.288", "0.344"]
 }
 df = pd.DataFrame(data)
 
@@ -18,11 +20,11 @@ df = pd.DataFrame(data)
 # 2. 画像フォーマットの設定 (幅8cm)
 # ==========================================
 fig_width_inch = 8.0 / 2.54
-fig_height_inch = 4.0 / 2.54  # 改行に合わせて高さを少し広げました
+fig_height_inch = 4.2 / 2.54  
 
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman']
-plt.rcParams['font.size'] = 10  # 💡 修正2：フォントサイズを10にアップ
+plt.rcParams['font.size'] = 9  
 
 fig, ax = plt.subplots(figsize=(fig_width_inch, fig_height_inch))
 ax.axis('off')
@@ -30,8 +32,8 @@ ax.axis('off')
 # ==========================================
 # 3. 表（Table）の描画
 # ==========================================
-# 💡 修正3：一番左の幅を削り（36%→28%）、残りの列を広く（16%→18%）する
-col_widths = [0.28, 0.18, 0.18, 0.18, 0.18]
+# 💡 Misoの列名が少し長くなったため、幅の比率を微調整して綺麗に収まるようにしました
+col_widths = [0.24, 0.14, 0.18, 0.14, 0.14, 0.16]
 
 table = ax.table(cellText=df.values, 
                  colLabels=df.columns, 
@@ -40,8 +42,8 @@ table = ax.table(cellText=df.values,
                  colWidths=col_widths)
 
 table.auto_set_font_size(False)
-table.set_fontsize(10)
-table.scale(1.0, 2.2)  # 💡 修正4：改行が入る分、セルの縦幅(高さ)に余裕を持たせる
+table.set_fontsize(9)  
+table.scale(1.0, 2.2)
 
 # ==========================================
 # 罫線の装飾（Booktabs スタイル）
@@ -70,8 +72,11 @@ plt.tight_layout()
 # ==========================================
 # 4. 画像の保存
 # ==========================================
-plt.savefig('Table1.png', dpi=600, bbox_inches='tight')
-plt.savefig('Table1.pdf', bbox_inches='tight')
+filename_png = 'Table1_Conditions.png'
+filename_pdf = 'Table1_Conditions.pdf'
 
-print("表の画像を保存しました (Table1.png / pdf)")
+plt.savefig(filename_png, dpi=600, bbox_inches='tight')
+plt.savefig(filename_pdf, bbox_inches='tight')
+
+print(f"表の画像を保存しました: {filename_png} / {filename_pdf}")
 plt.show()
