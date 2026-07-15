@@ -7,7 +7,7 @@ from Controls.PIDcontrol import PIDController
 from Controls.AdaptiveControl import STRController
 
 # ==============================================================================
-# 1. 共通定数・シミュレーション関数（軌跡取得用）
+# 1. 共通定数・シミュレーション関数（省略なし・変更なし）
 # ==============================================================================
 MAX_STEPS = 24
 SALT_INTERVAL = 30.0
@@ -138,17 +138,14 @@ sim_cond_pid, sim_temp_pid, sim_salt_pid, sim_conc_pid = run_simulation_trace(mo
 sim_cond_str, sim_temp_str, sim_salt_str, sim_conc_str = run_simulation_trace(mode="STR")
 
 # ==============================================================================
-# 2. 実機データ（Experiment）の入力エリア
+# 2. 実機データ入力（変更なし）
 # ==============================================================================
 def extend_to_24(data_list):
-    """データが24個未満の場合、最後の要素をコピーして24ステップに引き延ばす"""
     if not data_list:
         return [0.0] * 24
     if len(data_list) >= 24:
         return data_list[:24]
     return data_list + [data_list[-1]] * (24 - len(data_list))
-
-# 💡 以下に実測データを入力してください（途中までの配列でもOKです！）
 
 # --- Open-Loop (OL) の実機データ ---
 exp_raw_cond_ol = [21.7,
@@ -345,13 +342,13 @@ exp_cond_str, exp_temp_str, exp_salt_str, exp_conc_str = map(extend_to_24, [exp_
 # ==============================================================================
 # 3. Y軸の表示範囲設定
 # ==============================================================================
-Y_LIM_EC   = (5, 23)      # 1段目 左軸 (EC)
-Y_LIM_TEMP = (45, 55)     # 1段目 右軸 (温度) 
-Y_LIM_SALT = (0, 0.6)     # 2段目 (塩のスパイク) 💡OLの6gは途中で見切れます
-Y_LIM_CONC = (0, 1.7)     # 3段目 (濃度)
+Y_LIM_EC   = (5, 23)      
+Y_LIM_TEMP = (45, 55)     
+Y_LIM_SALT = (0, 0.6)     
+Y_LIM_CONC = (0, 1.7)     
 
 # ==============================================================================
-# 4. グラフ描画（3行2列）
+# 4. グラフ描画（本体縦縮小＆目盛りサイズ6版）
 # ==============================================================================
 steps = list(range(1, 25))
 steps_arr = np.array(steps)
@@ -362,126 +359,141 @@ grid_salt = [(sim_salt_ol, sim_salt_pid, sim_salt_str), (exp_salt_ol, exp_salt_p
 grid_conc = [(sim_conc_ol, sim_conc_pid, sim_conc_str), (exp_conc_ol, exp_conc_pid, exp_conc_str)]
 
 plt.rcParams['font.family'] = 'Times New Roman'
-plt.rcParams['font.size'] = 9
-plt.rcParams['axes.titlesize'] = 9
-plt.rcParams['axes.labelsize'] = 9
+plt.rcParams['font.size'] = 8
+plt.rcParams['axes.titlesize'] = 10    
+plt.rcParams['axes.labelsize'] = 9     
 
-# 💡 高さを 14cm から 10.5cm に圧縮
-fig, axes = plt.subplots(3, 2, figsize=(15 / 2.54, 10.5 / 2.54), 
-                         gridspec_kw={'height_ratios': [1, 1, 1.4], 'hspace': 0.40, 'wspace': 0.35})
+# 💡 要求通り、目盛りの数字（ラベル）の大きさを「6」に固定
+plt.rcParams['xtick.labelsize'] = 6   
+plt.rcParams['ytick.labelsize'] = 6
+
+# 全体の枠（高さ）を 8.5cm までさらに下げます（幅15cm固定）
+fig, axes = plt.subplots(2, 3, figsize=(15 / 2.54, 8.5 / 2.54))
 
 colors = {'OL': '#7f7f7f', 'PID': '#1f77b4', 'STR': '#ce0000', 'Temp': '#ff7f0e'}
 styles = {
-    'OL':  dict(color=colors['OL'],  linestyle='-',  linewidth=1.8, alpha=0.8),
-    'PID': dict(color=colors['PID'], linestyle='--', linewidth=2.0),
-    'STR': dict(color=colors['STR'], linestyle='-',  linewidth=2.5),
+    'OL':  dict(color=colors['OL'],  linestyle='-',  linewidth=1.5, alpha=0.8),
+    'PID': dict(color=colors['PID'], linestyle='--', linewidth=1.5),
+    'STR': dict(color=colors['STR'], linestyle='-',  linewidth=2.0),
 }
 
-col_titles = ["Simulation\n (Miso Soup + Tofu)", "Experiment \n(Miso Soup + Tofu)"]
+col_titles = ["Conductivity", "Added Salt", "Salinity"]
+row_labels = ["Simulation", "Experiment"]
 
-for col in range(2):
-    # --- 1段目: 伝導率 と 温度 ---
-    ax0 = axes[0, col]
-    # タイトルの余白(pad)も少し詰める
-    ax0.set_title(col_titles[col], fontweight='bold', pad=6)
+for row in range(2):
+    # ==========================
+    # 1列目: 伝導率 と 温度
+    # ==========================
+    ax0 = axes[row, 0]
+    if row == 0: ax0.set_title(col_titles[0], fontweight='bold', pad=6)
     
-    ax0.plot(steps, grid_cond[col][0], label='Conductivity (Open-Loop)', **styles['OL'])
-    ax0.plot(steps, grid_cond[col][1], label='Conductivity (PID)', **styles['PID'])
-    ax0.plot(steps, grid_cond[col][2], label='Conductivity (STR)', **styles['STR'])
+    ax0.plot(steps, grid_cond[row][0], **styles['OL'])
+    ax0.plot(steps, grid_cond[row][1], **styles['PID'])
+    ax0.plot(steps, grid_cond[row][2], **styles['STR'])
     
     ax0.set_ylim(Y_LIM_EC)
     ax0.set_xticks([1, 6, 12, 18, 24])
-    ax0.set_xticklabels([])
+    if row == 0: ax0.set_xticklabels([])
+    else: ax0.set_xlabel("Step")
     ax0.grid(alpha=0.3)
+    ax0.set_ylabel(r"$\sigma$ [mS/cm]", labelpad=2)
+    
+    # Simulation / Experiment の行ラベル（大きさ10）
+    ax0.annotate(row_labels[row], xy=(0, 0.5), xytext=(-0.4, 0.5),
+                 xycoords='axes fraction', textcoords='axes fraction',
+                 fontsize=10, fontweight='bold', ha='center', va='center', rotation=90)
     
     ax0_twin = ax0.twinx()
-    ax0_twin.fill_between(steps, 40, grid_temp[col][2], color=colors['Temp'], alpha=0.15)
-    ax0_twin.plot(steps, grid_temp[col][2], color=colors['Temp'], linestyle='-', linewidth=1.5, alpha=0.5)
-    
+    ax0_twin.fill_between(steps, 40, grid_temp[row][2], color=colors['Temp'], alpha=0.15)
+    ax0_twin.plot(steps, grid_temp[row][2], color=colors['Temp'], linestyle='-', linewidth=1.0, alpha=0.5)
     ax0_twin.set_ylim(Y_LIM_TEMP)
+    ax0_twin.set_ylabel(r"$T$ [$^\circ$C]", color=colors['Temp'], labelpad=4)
+    ax0_twin.tick_params(axis='y', colors=colors['Temp'], labelsize=6) # 💡右目盛りも6に
     
-    if col == 0: 
-        ax0.set_ylabel("Conductivity\n" + r"$\sigma$ [mS/cm]")
-        ax0_twin.set_yticks([]) 
-    if col == 1: 
-        ax0_twin.set_ylabel("Temperature\n" + r"$T$ [$^\circ$C]")
-        
-    # --- 2段目: 塩の追加量（ステップごとに横にずらして並べるスパイク） ---
-    ax1 = axes[1, col]
+    # ==========================
+    # 2列目: 塩の追加量
+    # ==========================
+    ax1 = axes[row, 1]
+    if row == 0: ax1.set_title(col_titles[1], fontweight='bold', pad=6)
     
     bar_width = 0.4
-    ax1.bar(steps_arr - bar_width, grid_salt[col][0], width=bar_width, label='Open-Loop', color=colors['OL'], alpha=0.7, zorder=3)
-    ax1.bar(steps_arr,             grid_salt[col][1], width=bar_width, label='PID',       color=colors['PID'], alpha=0.9, zorder=3)
-    ax1.bar(steps_arr + bar_width, grid_salt[col][2], width=bar_width, label='STR',       color=colors['STR'], alpha=1.0, zorder=3)
+    ax1.bar(steps_arr - bar_width, grid_salt[row][0], width=bar_width, color=colors['OL'], alpha=0.7, zorder=3)
+    ax1.bar(steps_arr,             grid_salt[row][1], width=bar_width, color=colors['PID'], alpha=0.9, zorder=3)
+    ax1.bar(steps_arr + bar_width, grid_salt[row][2], width=bar_width, color=colors['STR'], alpha=1.0, zorder=3)
     
-    if grid_salt[col][0][0] > 0.6:
-        # 💡 text の代わりに annotate を使って矢印を引く
-        ax1.annotate('6.0g',
-                     xy=(1 - bar_width, 0.55),             # 矢印の「先端」が指す座標（棒の真上）
-                     xytext=(1 - bar_width + 10.0, 0.5),  # 「6.0g」の文字を置く座標（+4.0でめっちゃ右にずらす）
-                     ha='center', va='center', 
-                     color=colors['OL'], fontsize=7.5, fontweight='bold', zorder=4,
-                     arrowprops=dict(arrowstyle="->", color=colors['OL'], linewidth=1.5))
+    if grid_salt[row][0][0] > 0.6:
+        ax1.annotate('6.0g', xy=(1 - bar_width, 0.55), xytext=(30, -3),
+                     textcoords="offset points", ha='left', va='center', 
+                     color=colors['OL'], fontsize=8, fontweight='bold', zorder=4,
+                     arrowprops=dict(arrowstyle="->", color=colors['OL'], linewidth=1.0))
 
     ax1.set_ylim(Y_LIM_SALT)
     ax1.set_yticks([0, 0.3, 0.6])
     ax1.set_xticks([1, 6, 12, 18, 24])
-    ax1.set_xticklabels([])
+    if row == 0: ax1.set_xticklabels([])
+    else: ax1.set_xlabel("Step")
     ax1.grid(alpha=0.3)
-    
-    if col == 0: ax1.set_ylabel("Added Salt\n" + r"$u$ [g]")
+    ax1.set_ylabel(r"$u$ [g]", labelpad=2)
 
-    # --- 3段目: 最終濃度 ---
-    ax2 = axes[2, col]
-    ax2.axhline(1.0, color='black', linestyle=':', alpha=0.6, label='Target (1.0%)')
+    # ==========================
+    # 3列目: 最終濃度
+    # ==========================
+    ax2 = axes[row, 2]
+    if row == 0: ax2.set_title(col_titles[2], fontweight='bold', pad=6)
     
-    ax2.plot(steps, grid_conc[col][0], label='Open-Loop', **styles['OL'])
-    ax2.plot(steps, grid_conc[col][1], label='PID Control', **styles['PID'])
-    ax2.plot(steps, grid_conc[col][2], label='Adaptive Tasting', **styles['STR'])
+    ax2.axhline(1.0, color='black', linestyle=':', linewidth=1.2, alpha=0.6)
+    
+    ax2.plot(steps, grid_conc[row][0], **styles['OL'])
+    ax2.plot(steps, grid_conc[row][1], **styles['PID'])
+    ax2.plot(steps, grid_conc[row][2], **styles['STR'])
     
     ax2.set_ylim(Y_LIM_CONC)
     ax2.set_yticks([0, 0.5, 1.0, 1.5])
     ax2.set_xticks([1, 6, 12, 18, 24])
+    if row == 0: ax2.set_xticklabels([])
+    else: ax2.set_xlabel("Step")
     ax2.grid(alpha=0.3)
-    
-    # 軸ラベルの余白も少し詰める
-    ax2.set_xlabel("Step", labelpad=4)
-    
-    if col == 0: ax2.set_ylabel("Salinity\n" + r"$C$ [%]")
-
-fig.align_ylabels(axes[:, 0])
+    ax2.set_ylabel(r"$C$ [%]", labelpad=2)
 
 # ==============================================================================
-# 5. 凡例とレイアウト調整
+# 5. グラフサイズ・位置の完全固定調整（独立調整）
 # ==============================================================================
-plt.subplots_adjust(left=0.12, right=0.88, top=0.92, bottom=0.26)
+# 💡 グラフ自体の大きさをここで完全に数値指定します
+w0, w1, w2 = 0.18, 0.18, 0.24  # 各グラフの横幅（3列目は広め）
+h = 0.24                       # 💡【解決】グラフ本体の縦の大きさをここで強制的に小さく固定！
 
-# 💡 1段目用の凡例リスト（コントロール3種）
+# 💡 各グラフの左端の開始位置（X座標）をコントロールして隙間を独立調整
+x0 = 0.04
+x1 = x0 + w0 + 0.15  # 💡1個目と2個目の間：ここを広げる（0.12の隙間）
+x2 = x1 + w1 + 0.08 # 💡2個目と3個目の間：ここは詰める（0.05の隙間）
+
+# 💡 各行の下端の開始位置（Y座標）をコントロールして上下の隙間を調整
+y1 = 0.26            # 下段（Experiment）の位置
+y0 = y1 + h + 0.07   # 上段（Simulation）の位置（0.07の隙間＝空きすぎを解消）
+
+# 確定した配置を一斉に適用
+for col, (x, w) in enumerate([(x0, w0), (x1, w1), (x2, w2)]):
+    axes[0, col].set_position([x, y0, w, h])
+    axes[1, col].set_position([x, y1, w, h])
+
+# --- 凡例の設定（位置もグラフの縮小に合わせて微調整） ---
 legend_controls = [
-    mlines.Line2D([0], [0], color=colors['OL'], linestyle='-', linewidth=1.8, alpha=0.8, label='Open-Loop'),
-    mlines.Line2D([0], [0], color=colors['PID'], linestyle='--', linewidth=2.0, label='PID Control'),
-    mlines.Line2D([0], [0], color=colors['STR'], linestyle='-', linewidth=2.5, label='Adaptive Tasting Control')
+    mlines.Line2D([0], [0], color=colors['OL'], linestyle='-', linewidth=1.5, alpha=0.8, label='Open-Loop'),
+    mlines.Line2D([0], [0], color=colors['PID'], linestyle='--', linewidth=1.5, label='PID Control'),
+    mlines.Line2D([0], [0], color=colors['STR'], linestyle='-', linewidth=2.0, label='Proposed Framework')
 ]
-
-# 💡 2段目用の凡例リスト（温度とターゲット）
 legend_others = [
-    mpatches.Patch(color=colors['Temp'], alpha=0.3, label='Temperature (Adaptive Tasting)'),
-    mlines.Line2D([0], [0], color='black', linestyle=':', alpha=0.6, label='Target (1.0%)')
+    mpatches.Patch(color=colors['Temp'], alpha=0.3, label='Temperature'),
+    mlines.Line2D([0], [0], color='black', linestyle=':', linewidth=1.5, alpha=0.6, label='Target (1.0%)')
 ]
 
-# 1段目（上側）を ncol=3 でド真ん中に配置
-leg1 = fig.legend(handles=legend_controls, loc='lower center', bbox_to_anchor=(0.5, 0.06), ncol=3, fontsize=10, frameon=False)
+leg1 = fig.legend(handles=legend_controls, loc='lower center', bbox_to_anchor=(0.41, 0.07), ncol=3, fontsize=9, frameon=False, columnspacing=1.5)
+leg2 = fig.legend(handles=legend_others,   loc='lower center', bbox_to_anchor=(0.41, 0.025), ncol=2, fontsize=9, frameon=False, columnspacing=3.0)
 
-# 2段目（下側）を ncol=2 でド真ん中に配置
-leg2 = fig.legend(handles=legend_others, loc='lower center', bbox_to_anchor=(0.5, 0.01), ncol=2, fontsize=10, frameon=False)
+fig.add_artist(leg1) 
 
-# Matplotlibの仕様で1つ目の凡例が上書きされて消えないように、図にガッチリ固定
-fig.add_artist(leg1)
-
-filename_png = 'Sim_Exp_Comparison_Spike.png'
-filename_pdf = 'Sim_Exp_Comparison_Spike.pdf'
-plt.savefig(filename_png, dpi=300)
-plt.savefig(filename_pdf)
-
-print(f"完了！スパイク＆温度背景版の比較グラフを保存しました:\n  - {filename_png}\n  - {filename_pdf}")
+filename_png = '3.png'
+filename_pdf = '3.pdf'
+plt.savefig(filename_png, dpi=300, bbox_inches='tight')
+plt.savefig(filename_pdf, bbox_inches='tight')
 plt.show()

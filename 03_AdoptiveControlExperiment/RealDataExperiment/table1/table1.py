@@ -12,7 +12,7 @@ data = {
     "Miso\n(g)": [0, 20, 20],
     "Tofu\n(g)": [0, 0, 100],
     "Total\n(g)": [600, 600, 600],
-    "Init. Salt\n(%)": ["0.000", "0.288", "0.344"]
+    "Init. Salt\n(%)": ["0.000", "0.290", "0.348"]
 }
 df = pd.DataFrame(data)
 
@@ -20,11 +20,11 @@ df = pd.DataFrame(data)
 # 2. 画像フォーマットの設定 (幅8cm)
 # ==========================================
 fig_width_inch = 8.0 / 2.54
-fig_height_inch = 4.2 / 2.54  
+fig_height_inch = 3.5 / 2.54  
 
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman']
-plt.rcParams['font.size'] = 9  
+plt.rcParams['font.size'] = 7  
 
 fig, ax = plt.subplots(figsize=(fig_width_inch, fig_height_inch))
 ax.axis('off')
@@ -42,7 +42,7 @@ table = ax.table(cellText=df.values,
                  colWidths=col_widths)
 
 table.auto_set_font_size(False)
-table.set_fontsize(9)  
+table.set_fontsize(7)  
 table.scale(1.0, 2.2)
 
 # ==========================================

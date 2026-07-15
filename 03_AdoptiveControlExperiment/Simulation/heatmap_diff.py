@@ -174,7 +174,7 @@ if __name__ == "__main__":
     
     axes = [ax_pid, ax_str, ax_diff]
     datas = [Z_pid, Z_str, Z_diff]
-    titles = ['(a) PID Control', '(b) Adaptive Tasting Control', '(c) Performance Improvement']
+    titles = ['(a) PID Control', '(b) Proposed Framework', '(c) Performance Improvement']
     
     colors_green = [
         (0.0, "#e0e0e0"),  
@@ -233,7 +233,7 @@ if __name__ == "__main__":
     cbar1.ax.tick_params(labelsize=6.5)
     
     cbar2 = fig.colorbar(axes[2].images[0], cax=cax_diff)
-    cbar2.set_label('Error Reduction ($|e_{\\mathrm{PID}}| - |e_{\\mathrm{STR}}|$) [%]', fontsize=7.5, labelpad=2)
+    cbar2.set_label('Error Reduction ($|e_{\\mathrm{PID}}| - |e_{\\mathrm{Proposed}}|$) [%]', fontsize=7.5, labelpad=2)
     cbar2.ax.tick_params(labelsize=6.5)
     
     filename_png = 'Heatmap_diff.png'
