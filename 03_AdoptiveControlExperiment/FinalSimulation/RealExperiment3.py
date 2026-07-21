@@ -76,7 +76,7 @@ KP = 0.1
 KI = 0.005
 KD = 0.0
 
-CONTROL_MODE = "PID"   # "STR" / "PID" / "OpenLoop"
+CONTROL_MODE = "STR"   # "STR" / "PID" / "OpenLoop"
 
 
 # ─────────────────────────────────────────
@@ -254,8 +254,7 @@ def main():
     time.sleep(3.0)
 
     str_unit = STRController(
-        alpha_init=ALPHA_NOMINAL, beta_init=BETA_NOMINAL,
-        a=TEMP_COEFF, T_base=T_BASE, lam=1.0
+        alpha_init=ALPHA_NOMINAL, beta_init=BETA_NOMINAL, lam=1.0
     )
     pid = PIDController(Kp=KP, Ki=KI, Kd=KD,
                         output_min=0.0,
@@ -347,7 +346,7 @@ def main():
                     X_virtual_total = C_init_virtual + C_added
                     
                     # 3. 生のパラメータを学習
-                    raw_alpha_h, raw_beta_h = str_unit.estimate(sigma_comp, X_virtual_total, T_rec)
+                    raw_alpha_h, raw_beta_h = str_unit.estimate(sigma_comp, X_virtual_total)
                     
                     # 4. 【安全装置】変化率制限と不感帯の適用
                     d_alpha = raw_alpha_h - prev_alpha
